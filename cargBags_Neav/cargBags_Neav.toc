@@ -1,0 +1,15 @@
+## Interface: 80000
+## Title: cargBags_Neav
+## Author: Grimsbain (Forked from cargBags_Nivaya by Luzzifus (Modified by Nibelheim, humfras))
+## SavedVariables: cBneavCfg, cB_CustomBags, cBneav_CatInfo
+## SavedVariablesPerCharacter: cB_KnownItems, cBneav
+
+config.lua
+
+cargBags\embed.xml
+localization.lua
+filters.lua
+cargBags_Neav.lua
+style.lua
+
+options.lua

@@ -1,0 +1,10 @@
+## Interface: 80000
+## Title: |cffCC3333 n|rCombatText
+## Notes: Small tweaks for the default combat text. (Forked from rCombatText by Zork)
+## Author: Grimsbain
+## Version: 1.0-release
+## RequiredDeps: Blizzard_CombatText
+## LoadWith: Blizzard_CombatText
+## LoadOnDemand: 1
+
+core.lua

@@ -1,0 +1,52 @@
+<Ui>
+	<Script file="core.lua" />
+	<Frame name="nReputation" parent="ReputationFrame" enableMouse="true" hidden="false">
+		<Size x="250" y="24" />
+        <Anchors>
+            <Anchor point="TOPRIGHT" relativeTo="CharacterFrameTopTileStreaks">
+                <Offset>
+                    <AbsDimension x="-4" y="-2" />
+                </Offset>
+            </Anchor>
+        </Anchors>
+		<Frames>
+			<CheckButton name="nReputationToggle" parentKey="Toggle">
+				<Size>
+					<AbsDimension x="24" y="24" />
+				</Size>
+				<Anchors>
+					<Anchor point="TOPRIGHT">
+						<Offset x="0" y="0"/>
+					</Anchor>
+				</Anchors>
+				<Layers>
+					<Layer level="ARTWORK">
+						<FontString name="$parentText" text="TRACK_QUEST_ABBREV" inherits="SystemFont_Shadow_Med1" parentKey="Text">
+							<Anchors>
+								<Anchor point="RIGHT" relativePoint="LEFT" x="-2" y="0"/>
+							</Anchors>
+						</FontString>
+					</Layer>
+				</Layers>
+				<Scripts>
+					<OnShow>
+						self:SetChecked(nReputationDB.Toggle)
+					</OnShow>
+					<OnClick>
+						PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+						nReputationDB.Toggle = self:GetChecked()
+					</OnClick>
+				</Scripts>
+				<NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
+				<PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
+				<HighlightTexture file="Interface\Buttons\UI-CheckBox-Highlight" alphaMode="ADD"/>
+				<CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
+				<DisabledCheckedTexture file="Interface\Buttons\UI-CheckBox-Check-Disabled"/>
+			</CheckButton>
+		</Frames>
+		<Scripts>
+			<OnLoad function="nReputation_OnLoad" />
+			<OnEvent function="nReputation_OnEvent" />
+		</Scripts>
+	</Frame>
+</Ui>
