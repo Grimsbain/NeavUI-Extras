@@ -27,19 +27,19 @@ cB_Filters.fHideEmpty = function(item) if cBneavCfg.CompressEmpty then return it
 -- General Classification (cached)
 ------------------------------------
 cB_Filters.fItemClass = function(item, container)
-	if not item.id or not item.name then return false	end	-- incomplete data
-	if not cB_ItemClass[item.id] then cbNeav:ClassifyItem(item) end
+    if not item.id or not item.name then return false   end -- incomplete data
+    if not cB_ItemClass[item.id] then cbNeav:ClassifyItem(item) end
 
-	local t, bag = cB_ItemClass[item.id]
+    local t, bag = cB_ItemClass[item.id]
 
-	local isBankBag = item.bagID == -1 or (item.bagID >= 5 and item.bagID <= 11)
-	if isBankBag then
-		bag = (cB_existsBankBag[t] and cBneavCfg.FilterBank and cB_filterEnabled[t]) and "Bank"..t or "Bank"
-	else
-		bag = (t ~= "NoClass" and cB_filterEnabled[t]) and t or "Bag"
-	end
+    local isBankBag = item.bagID == -1 or (item.bagID >= 5 and item.bagID <= 11)
+    if isBankBag then
+        bag = (cB_existsBankBag[t] and cBneavCfg.FilterBank and cB_filterEnabled[t]) and "Bank"..t or "Bank"
+    else
+        bag = (t ~= "NoClass" and cB_filterEnabled[t]) and t or "Bag"
+    end
 
-	return bag == container
+    return bag == container
 end
 
 local function CanGoInBag(itemID,bagType)
@@ -49,46 +49,46 @@ local function CanGoInBag(itemID,bagType)
 end
 
 function cbNeav:ClassifyItem(item)
-	--Keyring
-	if item.bagID == -2 then cB_ItemClass[item.id] = "Keyring"; return true end
+    --Keyring
+    if item.bagID == -2 then cB_ItemClass[item.id] = "Keyring"; return true end
 
-	-- User assigned containers.
-	local tC = cBneav_CatInfo[item.id]
-	if tC then cB_ItemClass[item.id] = tC; return true end
+    -- User assigned containers.
+    local tC = cBneav_CatInfo[item.id]
+    if tC then cB_ItemClass[item.id] = tC; return true end
 
-	-- Junk
-	if (item.rarity == 0) then cB_ItemClass[item.id] = "Junk"; return true end
+    -- Junk
+    if (item.rarity == 0) then cB_ItemClass[item.id] = "Junk"; return true end
 
-	-- Type based filters.
-	if item.type then
-		if		(item.type == L.Armor or item.type == L.Weapon)	    then cB_ItemClass[item.id] = "Armor"; return true               -- Weapons and Armor
-        elseif	(item.type == L.Gem and item.subclassID == 11)      then cB_ItemClass[item.id] = "Armor"; return true               -- Artifact Relics
-        elseif	(item.type == L.ArtifactPower)						then cB_ItemClass[item.id] = "ArtifactPower"; return true       -- Artifact Power
-		elseif	(item.type == L.Quest)								then cB_ItemClass[item.id] = "Quest"; return true               -- Quest Items
-		elseif	(item.type == L.Trades)								then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Trade Goods
-		elseif	(item.type == L.Gem)								then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Gems
+    -- Type based filters.
+    if item.type then
+        if      (item.type == L.Armor or item.type == L.Weapon)     then cB_ItemClass[item.id] = "Armor"; return true               -- Weapons and Armor
+        elseif  (item.type == L.Gem and item.subclassID == 11)      then cB_ItemClass[item.id] = "Armor"; return true               -- Artifact Relics
+        elseif  (item.type == L.ArtifactPower)                      then cB_ItemClass[item.id] = "ArtifactPower"; return true       -- Artifact Power
+        elseif  (item.type == L.Quest)                              then cB_ItemClass[item.id] = "Quest"; return true               -- Quest Items
+        elseif  (item.type == L.Trades)                             then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Trade Goods
+        elseif  (item.type == L.Gem)                                then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Gems
         elseif  (item.type == L.ItemEnhancement)                    then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Item Enhancement
-        elseif	(item.type == L.Recipe)							    then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Recipes
+        elseif  (item.type == L.Recipe)                             then cB_ItemClass[item.id] = "TradeGoods"; return true          -- Recipes
         elseif  (CanGoInBag(item.id, 0x8000))                       then cB_ItemClass[item.id] = "Fishing"; return true             -- Fishing
-		elseif	(item.type == L.Consumables)						then cB_ItemClass[item.id] = "Consumables"; return true         -- Consumables
-        elseif	(item.type == L.BattlePet)						    then cB_ItemClass[item.id] = "BattlePet"; return true           -- Battle Pet
-        elseif	(item.classID == 15 and item.subclassID == 2)		then cB_ItemClass[item.id] = "BattlePet"; return true           -- Companion Pets
-		end
-	end
+        elseif  (item.type == L.Consumables)                        then cB_ItemClass[item.id] = "Consumables"; return true         -- Consumables
+        elseif  (item.type == L.BattlePet)                          then cB_ItemClass[item.id] = "BattlePet"; return true           -- Battle Pet
+        elseif  (item.classID == 15 and item.subclassID == 2)       then cB_ItemClass[item.id] = "BattlePet"; return true           -- Companion Pets
+        end
+    end
 
-	cB_ItemClass[item.id] = "NoClass"
+    cB_ItemClass[item.id] = "NoClass"
 end
 
 ------------------------------------------
 -- New Items filter and related functions
 ------------------------------------------
 cB_Filters.fNewItems = function(item)
-	if not cBneavCfg.NewItems then return false end
-	if not ((item.bagID >= 0) and (item.bagID <= 4)) then return false end
-	if not item.link then return false end
-	if not cB_KnownItems[item.id] then return true end
-	local t = GetItemCount(item.id)	--cbNeav:getItemCount(item.id)
-	return (t > cB_KnownItems[item.id]) and true or false
+    if not cBneavCfg.NewItems then return false end
+    if not ((item.bagID >= 0) and (item.bagID <= 4)) then return false end
+    if not item.link then return false end
+    if not cB_KnownItems[item.id] then return true end
+    local t = GetItemCount(item.id) --cbNeav:getItemCount(item.id)
+    return (t > cB_KnownItems[item.id]) and true or false
 end
 
 -----------------------------------------
@@ -100,39 +100,39 @@ end
 -- local OF = IsAddOnLoaded('Outfitter')
 
 cB_Filters.fItemSets = function(item)
-	if not cB_filterEnabled["ItemSets"] then return false end
-	if not item.link then return false end
-	local tC = cBneav_CatInfo[item.name]
-	if tC then return (tC == "ItemSets") and true or false end
-	-- Check Equipment Manager sets:
-	if cargBags.itemKeys["setID"](item) then return true end
+    if not cB_filterEnabled["ItemSets"] then return false end
+    if not item.link then return false end
+    local tC = cBneav_CatInfo[item.name]
+    if tC then return (tC == "ItemSets") and true or false end
+    -- Check Equipment Manager sets:
+    if cargBags.itemKeys["setID"](item) then return true end
    return false
 end
 
 -- ItemRack related
 -- local function cacheSetsIR()
-	-- for k in pairs(item2setIR) do item2setIR[k] = nil end
-	-- local IRsets = ItemRackUser.Sets
-	-- for i in next, IRsets do
-		-- if not string.find(i, "^~") then
-			-- for _,item in pairs(IRsets[i].equip) do
-				-- if item then item2setIR[item] = true end
-			-- end
-		-- end
-	-- end
-	-- cbNeav:UpdateBags()
+    -- for k in pairs(item2setIR) do item2setIR[k] = nil end
+    -- local IRsets = ItemRackUser.Sets
+    -- for i in next, IRsets do
+        -- if not string.find(i, "^~") then
+            -- for _,item in pairs(IRsets[i].equip) do
+                -- if item then item2setIR[item] = true end
+            -- end
+        -- end
+    -- end
+    -- cbNeav:UpdateBags()
 -- end
 
 -- if IR then
-	-- cacheSetsIR()
-	-- local function ItemRackOpt_CreateHooks()
-		-- local IRsaveSet = ItemRackOpt.SaveSet
-		-- function ItemRackOpt.SaveSet(...) IRsaveSet(...); cacheSetsIR() end
-		-- local IRdeleteSet = ItemRackOpt.DeleteSet
-		-- function ItemRackOpt.DeleteSet(...) IRdeleteSet(...); cacheSetsIR() end
-	-- end
-	-- local IRtoggleOpts = ItemRack.ToggleOptions
-	-- function ItemRack.ToggleOptions(...) IRtoggleOpts(...) ItemRackOpt_CreateHooks() end
+    -- cacheSetsIR()
+    -- local function ItemRackOpt_CreateHooks()
+        -- local IRsaveSet = ItemRackOpt.SaveSet
+        -- function ItemRackOpt.SaveSet(...) IRsaveSet(...); cacheSetsIR() end
+        -- local IRdeleteSet = ItemRackOpt.DeleteSet
+        -- function ItemRackOpt.DeleteSet(...) IRdeleteSet(...); cacheSetsIR() end
+    -- end
+    -- local IRtoggleOpts = ItemRack.ToggleOptions
+    -- function ItemRack.ToggleOptions(...) IRtoggleOpts(...) ItemRackOpt_CreateHooks() end
 -- end
 
 -- -- Outfitter related
@@ -140,25 +140,25 @@ end
 -- local function createItemString(i) return string.format("item:%d:%d:%d:%d:%d:%d:%d:%d:%d", i.Code, i.EnchantCode or 0, i.JewelCode1 or 0, i.JewelCode2 or 0, i.JewelCode3 or 0, i.JewelCode4 or 0, i.SubCode or 0, i.UniqueID or 0, pLevel) end
 
 -- local function cacheSetsOF()
-	-- for k in pairs(item2setOF) do item2setOF[k] = nil end
-	-- for _,id in ipairs(Outfitter_GetCategoryOrder()) do
-		-- local OFsets = Outfitter_GetOutfitsByCategoryID(id)
-		-- for _,vSet in pairs(OFsets) do
-			-- for _,item in pairs(vSet.Items) do
-				-- if item then item2setOF[createItemString(item)] = true end
-			-- end
-		-- end
-	-- end
-	-- cbNeav:UpdateBags()
+    -- for k in pairs(item2setOF) do item2setOF[k] = nil end
+    -- for _,id in ipairs(Outfitter_GetCategoryOrder()) do
+        -- local OFsets = Outfitter_GetOutfitsByCategoryID(id)
+        -- for _,vSet in pairs(OFsets) do
+            -- for _,item in pairs(vSet.Items) do
+                -- if item then item2setOF[createItemString(item)] = true end
+            -- end
+        -- end
+    -- end
+    -- cbNeav:UpdateBags()
 -- end
 
 -- if OF then
-	-- Outfitter_RegisterOutfitEvent("ADD_OUTFIT", cacheSetsOF)
-	-- Outfitter_RegisterOutfitEvent("DELETE_OUTFIT", cacheSetsOF)
-	-- Outfitter_RegisterOutfitEvent("EDIT_OUTFIT", cacheSetsOF)
-	-- if Outfitter:IsInitialized() then
-		-- cacheSetsOF()
-	-- else
-		-- Outfitter_RegisterOutfitEvent('OUTFITTER_INIT', cacheSetsOF)
-	-- end
+    -- Outfitter_RegisterOutfitEvent("ADD_OUTFIT", cacheSetsOF)
+    -- Outfitter_RegisterOutfitEvent("DELETE_OUTFIT", cacheSetsOF)
+    -- Outfitter_RegisterOutfitEvent("EDIT_OUTFIT", cacheSetsOF)
+    -- if Outfitter:IsInitialized() then
+        -- cacheSetsOF()
+    -- else
+        -- Outfitter_RegisterOutfitEvent('OUTFITTER_INIT', cacheSetsOF)
+    -- end
 -- end
