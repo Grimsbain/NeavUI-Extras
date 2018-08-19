@@ -306,20 +306,20 @@ local UpdateDimensions = function(self)
     self:SetHeight(self.ContainerHeight + height)
 end
 
-local SetFrameMovable = function(f, v)
-    f:SetMovable(true)
-    f:SetUserPlaced(true)
-    f:RegisterForClicks("LeftButton", "RightButton")
-    if v then
-        f:SetScript("OnMouseDown", function()
-            f:ClearAllPoints()
-            f:StartMoving()
-        end)
-        f:SetScript("OnMouseUp",  f.StopMovingOrSizing)
-    else
-        f:SetScript("OnMouseDown", nil)
-        f:SetScript("OnMouseUp", nil)
-    end
+local SetFrameMovable = function(frame, moveable)
+    frame:SetMovable(true)
+    frame:SetUserPlaced(true)
+    frame:RegisterForClicks("LeftButton", "RightButton")
+
+    frame:SetScript("OnDragStart", function(self)
+        if ( IsShiftKeyDown() and IsAltKeyDown() and moveable ) then
+            frame:StartMoving()
+        end
+    end)
+
+    frame:SetScript("OnDragStop", function(self)
+        frame:StopMovingOrSizing()
+    end)
 end
 
 local function IconButton_OnEnter(self)

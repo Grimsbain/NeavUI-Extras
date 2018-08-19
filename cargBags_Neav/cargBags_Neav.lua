@@ -314,6 +314,8 @@ function cargBags_Neav:ADDON_LOADED(event, addon)
 
     cB_Bags.main:SetPoint("BOTTOMRIGHT", -53, 107)
     cB_Bags.bank:SetPoint("TOPLEFT", 20, -20)
+    cB_Bags.main:RegisterForDrag("LeftButton")
+    cB_Bags.bank:RegisterForDrag("LeftButton")
 
     cbNeav:CreateAnchors()
     cbNeav:Init()
