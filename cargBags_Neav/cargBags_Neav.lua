@@ -653,7 +653,7 @@ local function HandleSlash(str)
         cBneavCfg.Unlocked = not cBneavCfg.Unlocked
         SetFrameMovable(cB_Bags.main, cBneavCfg.Unlocked)
         SetFrameMovable(cB_Bags.bank, cBneavCfg.Unlocked)
-        StatusMsg("Movable bags are now ", ".", cBneavCfg.Unlocked, true, false)
+        StatusMsg("Movable bags are now ", ". Hold shift+alt to move.", cBneavCfg.Unlocked, true, false)
         updateBags = true
     elseif str == "sortbags" then
         cBneavCfg.SortBags = not cBneavCfg.SortBags
@@ -720,7 +720,7 @@ local function HandleSlash(str)
 
     else
         ChatFrame1:AddMessage("|cFFFFFF00cargBags_Neav:|r")
-        StatusMsg("(", ") |cFFFFFF00unlock|r - Toggle unlocked status.", cBneavCfg.Unlocked, false, true)
+        StatusMsg("(", ") |cFFFFFF00unlock|r - Toggle unlocked status. Hold shift+alt to move.", cBneavCfg.Unlocked, false, true)
         StatusMsg("(", ") |cFFFFFF00new|r - Toggle the \"New Items\" filter.", cBneavCfg.NewItems, false, true)
         StatusMsg("(", ") |cFFFFFF00trade|r - Toggle the \"Trade Goods\" filter .", cBneavCfg.TradeGoods, false, true)
         StatusMsg("(", ") |cFFFFFF00armor|r - Toggle the \"Armor and Weapons\" filter .", cBneavCfg.Armor, false, true)
