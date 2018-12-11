@@ -3,9 +3,9 @@
 	<Frame name="nReputation" parent="ReputationFrame" enableMouse="true" hidden="false">
 		<Size x="250" y="24" />
         <Anchors>
-            <Anchor point="TOPRIGHT" relativeTo="CharacterFrameTopTileStreaks">
+            <Anchor point="TOPRIGHT" relativeTo="ReputationFrame">
                 <Offset>
-                    <AbsDimension x="-4" y="-2" />
+                    <AbsDimension x="-5" y="-25" />
                 </Offset>
             </Anchor>
         </Anchors>

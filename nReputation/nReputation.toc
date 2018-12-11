@@ -2,7 +2,7 @@
 ## Title: |cffCC3333 n|rReputation
 ## Notes: Auto change watched reputation.
 ## Author: Grimsbain
-## Version: 1.4-release
+## Version: 1.6-release
 ## SavedVariablesPerCharacter: nReputationDB
 
 nReputation.xml
