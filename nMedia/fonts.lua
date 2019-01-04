@@ -1,7 +1,15 @@
 local path = "Interface\\AddOns\\nMedia\\fonts\\"
-local LSM = LibStub("LibSharedMedia-3.0")
+local LSM = LibStub("LibSharedMedia-3.0", true)
 if not LSM then return end
 LSM:Register("font", "Accidental Presidency", path.."Accidental Presidency.ttf")
+LSM:Register("font", "ArchivoNarrow-Bold", path.."ArchivoNarrow-Bold.ttf")
+LSM:Register("font", "ArchivoNarrow-BoldItalic", path.."ArchivoNarrow-BoldItalic.ttf")
+LSM:Register("font", "ArchivoNarrow-Italic", path.."ArchivoNarrow-Italic.ttf")
+LSM:Register("font", "ArchivoNarrow-Medium", path.."ArchivoNarrow-Medium.ttf")
+LSM:Register("font", "ArchivoNarrow-MediumItalic", path.."ArchivoNarrow-MediumItalic.ttf")
+LSM:Register("font", "ArchivoNarrow-Regular", path.."ArchivoNarrow-Regular.ttf")
+LSM:Register("font", "ArchivoNarrow-SemiBold", path.."ArchivoNarrow-SemiBold.ttf")
+LSM:Register("font", "ArchivoNarrow-SemiBoldItalic", path.."ArchivoNarrow-SemiBoldItalic.ttf")
 LSM:Register("font", "FORCED SQUARE", path.."FORCED SQUARE.ttf")
 LSM:Register("font", "HARRYP__", path.."HARRYP__.TTF")
 LSM:Register("font", "NuevaStd-Cond", path.."NuevaStd-Cond.otf")

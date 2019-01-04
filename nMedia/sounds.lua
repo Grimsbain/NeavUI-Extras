@@ -1,5 +1,5 @@
 local path = "Interface\\AddOns\\nMedia\\sounds\\"
-local LSM = LibStub("LibSharedMedia-3.0")
+local LSM = LibStub("LibSharedMedia-3.0", true)
 if not LSM then return end
 LSM:Register("sound", "1", path.."1.ogg")
 LSM:Register("sound", "10", path.."10.ogg")
