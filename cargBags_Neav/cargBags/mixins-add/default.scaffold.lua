@@ -26,42 +26,61 @@ DEPENDENCIES
 ]]
 local addon, ns = ...
 local cargBags = ns.cargBags
-local path = "Interface\\AddOns\\cargBags_Neav\\media\\";
+local mediaPath = [[Interface\AddOns\cargBags_Neav\media\]]
 
-local function noop() end
+local modf = math.modf
+local CreateColor = CreateColor
 
-local function Round(num, idp)
-    local mult = 10^(idp or 0)
-    return math.floor(num * mult + 0.5) / mult
-end
+local gradientColor = {
+    [0] = CreateColor(1, 0, 0, 1),
+    [1] = CreateColor(1, 1, 0, 1),
+    [2] = CreateColor(0, 1, 0, 1)
+}
 
-local function ItemColorGradient(perc, ...)
-    if perc >= 1 then
-        return select(select("#", ...) - 2, ...)
-    elseif perc <= 0 then
-        return ...
+local function ItemColorGradient(perc, colors)
+    if ( not colors ) then
+        colors = gradientColor
     end
 
-    local num = select("#", ...) / 3
-    local segment, relperc = math.modf(perc*(num-1))
-    local r1, g1, b1, r2, g2, b2 = select((segment*3)+1, ...)
+    local num = #colors
 
-    return r1 + (r2-r1)*relperc, g1 + (g2-g1)*relperc, b1 + (b2-b1)*relperc
+    if ( perc >= 1 ) then
+        return colors[num]
+    elseif ( perc <= 0 ) then
+        return colors[0]
+    end
+
+    local segment, relperc = modf(perc*num)
+
+    local r1, g1, b1, r2, g2, b2
+    r1, g1, b1 = colors[segment]:GetRGB()
+    r2, g2, b2 = colors[segment+1]:GetRGB()
+
+    if ( not r2 or not g2 or not b2 ) then
+        return colors[0]
+    else
+        local r = r1 + (r2-r1)*relperc
+        local g = g1 + (g2-g1)*relperc
+        local b = b1 + (b2-b1)*relperc
+
+        return CreateColor(r, g, b, 1)
+    end
 end
 
 local function CreateInfoString(button, position)
-    local str = button:CreateFontString(nil, "OVERLAY")
-    if position == "TOP" then
-        str:SetJustifyH("LEFT")
-        str:SetPoint("TOPLEFT", button, "TOPLEFT", 1.5, -1.5)
+    local fontString = button:CreateFontString(nil, "ARTWORK")
+
+    if ( position == "TOP" ) then
+        fontString:SetJustifyH("LEFT")
+        fontString:SetPoint("TOPLEFT", button, "TOPLEFT", 1.5, -1.5)
     else
-        str:SetJustifyH("RIGHT")
-        str:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1.5, 1.5)
+        fontString:SetJustifyH("RIGHT")
+        fontString:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1.5, 1.5)
     end
 
-    str:SetFont(unpack(ns.options.fonts.itemCount))
+    fontString:SetFont(unpack(ns.options.fonts.itemCount))
 
-    return str
+    return fontString
 end
 
 local function ItemButton_Scaffold(self)
@@ -98,8 +117,9 @@ local function ItemButton_Update(self, item)
         -- Border
 
     if ( not self.BorderSet ) then
-        self.Border:SetTexture(path.."textureNormalWhite")
-        self.Border:SetAllPoints(self.Icon)
+        self.Border:SetTexture(mediaPath.."textureNormalWhite")
+        self.Border:SetPoint("TOPRIGHT", self.Icon, "TOPRIGHT", 1, 1)
+        self.Border:SetPoint("BOTTOMLEFT", self.Icon, "BOTTOMLEFT", -1, -1)
         self.BorderSet = true
     end
 
@@ -109,14 +129,16 @@ local function ItemButton_Update(self, item)
         self.NewItemTexture:ClearAllPoints()
         self.NewItemTexture:SetAllPoints(self.Icon)
 
-        if ( item.isNew ) then
+        local isNewItem = C_NewItems.IsNewItem(item.bagID, item.slotID)
+
+        if ( isNewItem ) then
             local isBattlePayItem = IsBattlePayItem(item.bagID, item.slotID)
 
             if ( isBattlePayItem ) then
                 self.NewItemTexture:Hide()
             else
-                if ( item.rarity and NEW_ITEM_ATLAS_BY_QUALITY[item.rarity] ) then
-                    self.NewItemTexture:SetAtlas(NEW_ITEM_ATLAS_BY_QUALITY[item.rarity])
+                if ( item.quality and NEW_ITEM_ATLAS_BY_QUALITY[item.quality] ) then
+                    self.NewItemTexture:SetAtlas(NEW_ITEM_ATLAS_BY_QUALITY[item.quality])
                 else
                     self.NewItemTexture:SetAtlas("bags-glow-white")
                 end
@@ -139,16 +161,21 @@ local function ItemButton_Update(self, item)
 
     if ( item.texture ) then
         local tex = item.texture or (cBneavCfg.CompressEmpty and self.bgTex)
+
         if ( tex ) then
             self.Icon:SetTexture(tex)
+            self.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         else
             self.Icon:SetColorTexture(1, 1, 1, 0.1)
+            self.Icon:SetTexCoord(0, 1, 0, 1)
         end
     else
         if ( cBneavCfg.CompressEmpty ) then
             self.Icon:SetTexture(self.bgTex)
+            self.Icon:SetTexCoord(0, 1, 0, 1)
         else
             self.Icon:SetColorTexture(1, 1, 1, 0.1)
+            self.Icon:SetTexCoord(0, 1, 0, 1)
         end
     end
 
@@ -160,17 +187,18 @@ local function ItemButton_Update(self, item)
     else
         self.Count:Hide()
     end
-    self.count = item.count -- Thank you Blizz for not using local variables >.> (BankFrame.lua @ 234 )
+    self.count = item.count
 
         -- Durability
 
     if ( item.canEquip and item.canEquip > 0 ) then
-        local dCur, dMax = GetContainerItemDurability(item.bagID, item.slotID)
-        if ( dMax and (dMax > 0) and (dCur < dMax) ) then
-            local dPer = (dCur / dMax * 100)
-            local r, g, b = ItemColorGradient((dCur/dMax), 1, 0, 0, 1, 1, 0, 0, 1, 0)
-            self.TopString:SetText(Round(dPer).."%")
-            self.TopString:SetTextColor(r, g, b)
+        local currentDurability, maxDurability = GetContainerItemDurability(item.bagID, item.slotID)
+
+        if ( maxDurability and maxDurability > 0 and currentDurability < maxDurability ) then
+            local percent = currentDurability / maxDurability
+            local color = ItemColorGradient(percent)
+            self.TopString:SetText(FormatPercentage(percent, true))
+            self.TopString:SetTextColor(color:GetRGB())
         else
             self.TopString:SetText("")
         end
@@ -181,8 +209,9 @@ local function ItemButton_Update(self, item)
         -- Item Level
 
     if ( item.canEquip and item.canEquip > 0 ) then
+        local qualityColor = ITEM_QUALITY_COLORS[item.quality].color
         self.BottomString:SetText(item.level)
-        self.BottomString:SetTextColor(item.rarityColor.r, item.rarityColor.g, item.rarityColor.b)
+        self.BottomString:SetTextColor(qualityColor:GetRGB())
     else
         self.BottomString:SetText("")
     end
@@ -230,7 +259,8 @@ end
     @callback OnUpdateLock(item)
 ]]
 local function ItemButton_UpdateLock(self, item)
-    self.Icon:SetDesaturated(item.locked)
+    local _, _, locked = GetContainerItemInfo(item.bagID, item.slotID)
+    self.Icon:SetDesaturated(locked)
 
     if ( self.OnUpdateLock ) then self:OnUpdateLock(item) end
 end
@@ -249,16 +279,16 @@ local function ItemButton_UpdateQuest(self, item)
     elseif ( item.questID or item.isQuestItem ) then
         self.Border:SetVertexColor(1, 1, 0.35)
         questBang = false
-    elseif ( item.rarity and item.rarity > 1 ) then
-        local r, g, b = item.rarityColor.r, item.rarityColor.g, item.rarityColor.b
-        self.Border:SetVertexColor(r, g, b)
+    elseif ( item.quality and item.quality > 1 ) then
+        local qualityColor = ITEM_QUALITY_COLORS[item.quality].color
+        self.Border:SetVertexColor(qualityColor:GetRGB())
     else
         self.Border:SetVertexColor(0.40, 0.40, 0.40)
     end
 
     if ( self.Quest ) then
         if ( questBang ) then
-            self.Quest:SetTexture(path.."QuestBang")
+            self.Quest:SetTexture(mediaPath.."QuestBang")
             self.Border:SetVertexColor(1, 1, 0.35)
             self.Quest:Show()
         else
@@ -270,7 +300,7 @@ local function ItemButton_UpdateQuest(self, item)
 end
 
 cargBags:RegisterScaffold("Default", function(self)
-    self.glowTex = "Interface\\Buttons\\UI-ActionButton-Border" --! @property glowTex <string> The textures used for the glow
+    self.glowTex = [[Interface\Buttons\UI-ActionButton-Border]] --! @property glowTex <string> The textures used for the glow
     self.glowAlpha = 0.8 --! @property glowAlpha <number> The alpha of the glow texture
     self.glowBlend = "ADD" --! @property glowBlend <string> The blendMode of the glow texture
     self.glowCoords = { 14/64, 50/64, 14/64, 50/64 } --! @property glowCoords <table> Indexed table of texCoords for the glow texture

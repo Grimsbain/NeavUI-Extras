@@ -35,11 +35,19 @@ local ItemButton = cargBags:NewClass("ItemButton", nil, "Button")
 ]]
 function ItemButton:GetTemplate(bagID)
     bagID = bagID or self.bagID
-    return (bagID == -3 and "ReagentBankItemButtonGenericTemplate") or (bagID == -1 and "BankItemButtonGenericTemplate") or (bagID and "ContainerFrameItemButtonTemplate") or "ItemButtonTemplate",
-      (bagID == -3 and ReagentBankFrame) or (bagID == -1 and BankFrame) or (bagID and _G["ContainerFrame"..bagID + 1]) or "ItemButtonTemplate";
+
+    return  (bagID == -3 and "ReagentBankItemButtonGenericTemplate") or
+            (bagID == -1 and "BankItemButtonGenericTemplate") or
+            (bagID and "ContainerFrameItemButtonTemplate") or "ItemButtonTemplate",
+            (bagID == -3 and ReagentBankFrame) or
+            (bagID == -1 and BankFrame) or
+            (bagID and _G["ContainerFrame"..bagID + 1]) or "ItemButtonTemplate";
 end
 
-local mt_gen_key = {__index = function(self,k) self[k] = {}; return self[k]; end}
+local mt_gen_key = {__index = function(self, key)
+    self[key] = {};
+    return self[key];
+end}
 
 --[[!
     Fetches a new instance of the ItemButton, creating one if necessary
@@ -50,8 +58,8 @@ local mt_gen_key = {__index = function(self,k) self[k] = {}; return self[k]; end
 function ItemButton:New(bagID, slotID)
     self.recycled = self.recycled or setmetatable({}, mt_gen_key)
 
-    local tpl, parent = self:GetTemplate(bagID)
-    local button = table.remove(self.recycled[tpl]) or self:Create(tpl, parent)
+    local template, parent = self:GetTemplate(bagID)
+    local button = table.remove(self.recycled[template]) or self:Create(template, parent)
 
     button.bagID = bagID
     button.slotID = slotID
@@ -64,32 +72,50 @@ end
 
 --[[!
     Creates a new ItemButton
-    @param tpl <string> The template to use [optional]
+    @param template <string> The template to use [optional]
     @return button <ItemButton>
-    @callback button:OnCreate(tpl)
+    @callback button:OnCreate(template)
 ]]
-local bFS
-function ItemButton:Create(tpl, parent)
+
+function ItemButton:Create(template, parent)
     local impl = self.implementation
     impl.numSlots = (impl.numSlots or 0) + 1
     local name = ("%sSlot%d"):format(impl.name, impl.numSlots)
 
-    local button = setmetatable(CreateFrame("Button", name, parent, tpl), self.__index)
-
-    if(button.Scaffold) then button:Scaffold(tpl) end
-    if(button.OnCreate) then button:OnCreate(tpl) end
-    local btnNT = _G[button:GetName().."NormalTexture"]
-    local btnNIT = button.NewItemTexture
-    local btnBIT = button.BattlepayItemTexture
-    if btnNT then btnNT:SetTexture("") end
-    if btnNIT then btnNIT:SetTexture("") end
-    if btnBIT then btnBIT:SetTexture("") end
-
+    local button = setmetatable(CreateFrame("Button", name, parent, template), self.__index)
     button:SetSize(ns.options.itemSlotSize, ns.options.itemSlotSize)
-    bFS = _G[button:GetName().."Count"]
-    bFS:ClearAllPoints()
-    bFS:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1.5, 1.5);
-    bFS:SetFont(unpack(ns.options.fonts.itemCount))
+
+    if ( button.Scaffold ) then
+        button:Scaffold(template)
+    end
+
+    if ( button.OnCreate ) then
+        button:OnCreate(template)
+    end
+
+    local normalTexture = _G[button:GetName().."NormalTexture"]
+    local newItemTexture = button.NewItemTexture
+    local battlepayItemTexture = button.BattlepayItemTexture
+
+    if ( normalTexture ) then
+        normalTexture:SetTexture(nil)
+    end
+
+    if ( newItemTexture ) then
+        newItemTexture:SetTexture(nil)
+    end
+
+    if ( battlepayItemTexture ) then
+        battlepayItemTexture:SetTexture(nil)
+    end
+
+    local count = _G[button:GetName().."Count"]
+
+    if ( count ) then
+        count:ClearAllPoints()
+        count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1.5, 1.5);
+        count:SetFont(unpack(ns.options.fonts.itemCount))
+    end
 
     return button
 end
@@ -111,3 +137,9 @@ function ItemButton:GetItemInfo(item)
     return self.implementation:GetItemInfo(self.bagID, self.slotID, item)
 end
 
+--[[!
+    Used to match items during search.
+]]
+function ItemButton:GetItemContextMatchResult()
+    return ItemButtonUtil.GetItemContextMatchResultForItem(ItemLocation:CreateFromBagAndSlot(self.bagID, self.slotID))
+end

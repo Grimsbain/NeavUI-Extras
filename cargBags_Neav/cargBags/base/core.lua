@@ -28,7 +28,7 @@ local global = GetAddOnMetadata(parent, 'X-cargBags')
 local cargBags = CreateFrame("Button")
 
 ns.cargBags = cargBags
-if(global) then
+if ( global ) then
     _G[global] = cargBags
 end
 
@@ -46,12 +46,17 @@ end})
 --  @param widget <string> The widget type of the class
 --  @return class <table> The prototype of the class
 function cargBags:NewClass(name, parent, widget)
-    if(self.classes[name]) then return end
+    if ( self.classes[name] ) then
+        return
+    end
+
     parent = parent and self.classes[parent]
+
     local class = setmetatable({}, parent or (widget and widgets[widget]))
     class.__index = class
     class._parent = parent
     self.classes[name] = class
+
     return class
 end
 
@@ -99,7 +104,7 @@ end
 function cargBags:RegisterBlizzard(implementation)
     self.blizzard = implementation
 
-    if(IsLoggedIn()) then
+    if ( IsLoggedIn() ) then
         self:ReplaceBlizzard(self.blizzard)
     else
         self:RegisterEvent("PLAYER_LOGIN")
@@ -112,7 +117,7 @@ end
 --  @param ... arguments of the event [optional]
 function cargBags:FireEvent(force, event, ...)
     for name, impl in pairs(self.classes.Implementation.instances) do
-        if(force or impl:IsShown()) then
+        if ( force or impl:IsShown() ) then
             impl:OnEvent(event or "BAG_UPDATE", ...)
         end
     end
@@ -121,40 +126,45 @@ end
 cargBags:RegisterEvent("BANKFRAME_OPENED")
 cargBags:RegisterEvent("BANKFRAME_CLOSED")
 
-cargBags:SetScript("OnEvent", function(self, event)
-    if(not self.blizzard) then return end
+cargBags:SetScript("OnEvent", function(self, event, ...)
+    if ( not self.blizzard ) then
+        return
+    end
 
     local impl = self.blizzard
 
-    if(event == "PLAYER_LOGIN") then
+    if ( event == "PLAYER_LOGIN" ) then
         self:ReplaceBlizzard(impl)
-    elseif(event == "BANKFRAME_OPENED") then
+    elseif ( event == "BANKFRAME_OPENED" ) then
         self.atBank = true
 
-        if(impl:IsShown()) then
+        if ( impl:IsShown() ) then
             impl:OnEvent("BAG_UPDATE")
         else
             impl:Show()
         end
 
-        if(impl.OnBankOpened) then
+        if ( impl.OnBankOpened ) then
             impl:OnBankOpened()
         end
-    elseif(event == "BANKFRAME_CLOSED") then
+    elseif ( event == "BANKFRAME_CLOSED" ) then
         self.atBank = nil
 
-        if(impl:IsShown()) then
+        if ( impl:IsShown() ) then
             impl:Hide()
         end
 
-        if(impl.OnBankClosed) then
+        if ( impl.OnBankClosed ) then
             impl:OnBankClosed()
         end
     end
 end)
 
 local handlerFuncs = setmetatable({}, {__index=function(self, handler)
-    self[handler] = function(self, ...) return self[handler] and self[handler](self, ...) end
+    self[handler] = function(self, ...)
+        return self[handler] and self[handler](self, ...)
+    end
+
     return self[handler]
 end})
 
@@ -176,7 +186,6 @@ function cargBags.ToBagSlot(bagID, slotID)
     return bagID*100+slotID
 end
 
-
 --- Gets the bagID-slotID-pair of a bagSlot-index
 --  @param bagSlot <number>
 --  @return bagID <number>
@@ -191,4 +200,3 @@ local m_item = {__index = function(i,k) return cargBags.itemKeys[k] and cargBags
 function cargBags:NewItemTable()
     return setmetatable({}, m_item)
 end
-

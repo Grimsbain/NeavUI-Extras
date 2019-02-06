@@ -37,8 +37,13 @@ local toBagSlot = cargBags.ToBagSlot
     @return impl <Implementation>
 ]]
 function Implementation:New(name)
-    if ( self.instances[name] ) then return error(("cargBags: Implementation '%s' already exists!"):format(name)) end
-    if ( _G[name] ) then return error(("cargBags: Global '%s' for Implementation is already used!"):format(name)) end
+    if ( self.instances[name] ) then
+        return error(("cargBags: Implementation '%s' already exists!"):format(name))
+    end
+
+    if ( _G[name] ) then
+        return error(("cargBags: Global '%s' for Implementation is already used!"):format(name))
+    end
 
     local impl = setmetatable(CreateFrame("Button", name, UIParent), self.__index)
     impl.name = name
@@ -52,7 +57,6 @@ function Implementation:New(name)
     impl.contByID = {} --! @property contByID <table> Holds all child-Containers by index
     impl.contByName = {} --!@ property contByName <table> Holds all child-Containers by name
     impl.buttons = {} -- @property buttons <table> Holds all ItemButtons by bagSlot
-    impl.bagSizes = {} -- @property bagSizes <table> Holds the size of all bags
     impl.events = {} -- @property events <table> Holds all event callbacks
     impl.notInited = true -- @property notInited <bool>
 
@@ -75,6 +79,7 @@ function Implementation:OnShow()
             return
         end
     end
+
     PlaySound(SOUNDKIT.IG_BACKPACK_OPEN)
     if ( self.OnOpen ) then self:OnOpen() end
     self:OnEvent("BAG_UPDATE")
@@ -85,7 +90,10 @@ end
     @callback OnClose
 ]]
 function Implementation:OnHide()
-    if ( self.notInited ) then return end
+    if ( self.notInited ) then
+        return
+    end
+
     PlaySound(SOUNDKIT.IG_BACKPACK_CLOSE)
     if ( self.OnClose ) then self:OnClose() end
     if ( self:AtBank() ) then CloseBankFrame() end
@@ -134,11 +142,16 @@ end
     @return class <table> The class prototype
 ]]
 function Implementation:GetClass(name, create, ...)
-    if ( not name ) then return end
+    if ( not name ) then
+        return
+    end
 
     name = self.name..name
     local class = cargBags.classes[name]
-    if ( class or not create ) then return class end
+
+    if ( class or not create ) then
+        return class
+    end
 
     class = cargBags:NewClass(name, ...)
     class.implementation = self
@@ -259,6 +272,7 @@ function Implementation:Init()
     self:RegisterEvent("PLAYERREAGENTBANKSLOTS_CHANGED", self, self.PLAYERREAGENTBANKSLOTS_CHANGED)
     self:RegisterEvent("UNIT_QUEST_LOG_CHANGED", self, self.UNIT_QUEST_LOG_CHANGED)
     self:RegisterEvent("BAG_CLOSED", self, self.BAG_CLOSED)
+    self:RegisterEvent("INVENTORY_SEARCH_UPDATE", self, self.INVENTORY_SEARCH_UPDATE)
 end
 
 --[[!
@@ -299,47 +313,30 @@ local defaultItem = cargBags:NewItemTable()
     @return i <table>
 ]]
 
-function Implementation:GetItemInfo(bagID, slotID, i)
-    i = i or defaultItem
-    for k in pairs(i) do i[k] = nil end
+function Implementation:GetItemInfo(bagID, slotID, item)
+    item = item or defaultItem
 
-    i.bagID = bagID
-    i.slotID = slotID
+    for key in pairs(item) do
+        item[key] = nil
+    end
+
+    item.bagID = bagID
+    item.slotID = slotID
 
     local clink = GetContainerItemLink(bagID, slotID)
 
-    if( clink ) then
-        local item = Item:CreateFromBagAndSlot(bagID, slotID)
-
-        item:ContinueOnItemLoad(function()
-            i.name = item:GetItemName()
-            i.texture = item:GetItemIcon()
-            i.link = item:GetItemLink()
-            i.level = item:GetCurrentItemLevel()
-            i.canEquip = item:GetInventoryType()
-            i.rarity = item:GetItemQuality()
-            i.rarityColor = item:GetItemQualityColor()
-            -- i.location = item:GetItemLocation()
-            i.locked = item:IsItemLocked()
-            i.bound = C_Item.IsBound(item:GetItemLocation())
-            i.id = item:GetItemID()
-            i.isNew = C_NewItems.IsNewItem(bagID, slotID)
-
-            -- local equipLocation, texture, classID, subclassID = item:GetInventoryTypeName()
-
-            _, _, _, _, i.minLevel, i.type, i.subType, i.stackCount, i.equipLoc, _, i.sellPrice, i.classID, i.subclassID = GetItemInfo(i.id)
-        end)
-
-        _, i.count = GetContainerItemInfo(bagID, slotID)
-        i.isQuestItem, i.questID, i.questActive = GetContainerItemQuestInfo(bagID, slotID)
-        i.isInSet, i.setName = GetContainerItemEquipmentSetInfo(bagID, slotID)
-
-        -- get the item spell to determine if the item is an Artifact Power boosting item
-        -- if ns.options.filterArtifactPower and IsArtifactPowerItem(i.id) then
-            -- i.type = ARTIFACT_POWER
-        -- end
+    if ( not clink ) then
+        return item
     end
-    return i
+
+    item.texture, item.count, _, item.quality, _, _, item.link, _, _, item.id = GetContainerItemInfo(bagID, slotID)
+    _, _, _, _, item.minLevel, item.type, item.subType, item.stackCount, _, _, item.sellPrice, item.classID, item.subclassID = GetItemInfo(item.link)
+    item.isQuestItem, item.questID, item.questActive = GetContainerItemQuestInfo(bagID, slotID)
+    item.isInSet, item.setName = GetContainerItemEquipmentSetInfo(bagID, slotID)
+    item.canEquip = C_Item.GetItemInventoryTypeByID(item.link)
+    item.level = GetDetailedItemLevelInfo(item.link)
+
+    return item
 end
 
 --[[!
@@ -372,33 +369,18 @@ function Implementation:UpdateSlot(bagID, slotID)
     end
 end
 
-local closed
-
 --[[!
     Updates a bag and its containing slots
     @param bagID <number>
 ]]
 function Implementation:UpdateBag(bagID)
-    local numSlots
-    if ( closed ) then
-        numSlots, closed = 0
-    else
-        numSlots = GetContainerNumSlots(bagID)
+    if ( not self:IsShown() ) then
+        return
     end
-    local lastSlots = self.bagSizes[bagID] or 0
-    self.bagSizes[bagID] = numSlots
 
-    for slotID=1, numSlots do
+    for slotID = 1, GetContainerNumSlots(bagID) do
         self:UpdateSlot(bagID, slotID)
         C_NewItems.RemoveNewItem(bagID, slotID)
-    end
-    for slotID=numSlots+1, lastSlots do
-        local button = self:GetButton(bagID, slotID)
-        if ( button ) then
-            button.container:RemoveButton(button)
-            self:SetButton(bagID, slotID, nil)
-            button:Free()
-        end
     end
 end
 
@@ -414,7 +396,7 @@ function Implementation:BAG_UPDATE(event, bagID, slotID)
     elseif ( bagID ) then
         self:UpdateBag(bagID)
     else
-        for bagID = -2, 11 do
+        for bagID = -1, 11 do
             self:UpdateBag(bagID)
         end
     end
@@ -425,7 +407,6 @@ end
     @param bagID <number>
 ]]
 function Implementation:BAG_CLOSED(event, bagID)
-    closed = bagID
     self:BAG_UPDATE(event, bagID)
 end
 
@@ -489,7 +470,7 @@ end
     @param slotID <number> [optional]
 ]]
 function Implementation:PLAYERREAGENTBANKSLOTS_CHANGED(event, slotID)
-    local bagID = ReagentBankFrame:GetID() -- -3
+    local bagID = REAGENTBANK_CONTAINER
 
     self:BAG_UPDATE(event, bagID, slotID)
 end
@@ -502,6 +483,20 @@ function Implementation:UNIT_QUEST_LOG_CHANGED(event)
         for i, button in pairs(container.buttons) do
             local item = self:GetItemInfo(button.bagID, button.slotID)
             button:UpdateQuest(item)
+        end
+    end
+end
+
+--[[
+    Fired when item search changes
+]]
+function Implementation:INVENTORY_SEARCH_UPDATE(event)
+    local _, isFiltered
+
+    for id, container in pairs(self.contByID) do
+        for i, button in pairs(container.buttons) do
+            _, _, _, _, _, _, _, isFiltered = GetContainerItemInfo(button.bagID, button.slotID)
+            button:SetMatchesSearch(not isFiltered)
         end
     end
 end

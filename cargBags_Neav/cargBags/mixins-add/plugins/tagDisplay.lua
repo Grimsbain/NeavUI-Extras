@@ -25,7 +25,6 @@ DESCRIPTION
         space - specify a formatstring as arg #1, using "free" / "max" / "used"
         item - count of the item in arg #1 (itemID, itemLink, itemName)
             shards - "sub-tag" of item, displays soul shard info
-        ammo - count of ammo slot
         currency - displays the currency with id arg #1
             currencies - displays all tracked currencies
         money - formatted money display
@@ -49,33 +48,33 @@ local format = string.format
 local floor = math.floor
 
 local function FormatValue(number)
-    if number < 1e3 then
+    if ( number < 1e3 ) then
         return floor(number)
-    elseif number >= 1e12 then
-        return string.format("%.3ft", number/1e12)
-    elseif number >= 1e9 then
-        return string.format("%.3fb", number/1e9)
-    elseif number >= 1e6 then
-        return string.format("%.2fm", number/1e6)
-    elseif number >= 1e3 then
-        return string.format("%.2fk", number/1e3)
+    elseif ( number >= 1e12 ) then
+        return format("%.3ft", number/1e12)
+    elseif ( number >= 1e9 ) then
+        return format("%.3fb", number/1e9)
+    elseif ( number >= 1e6 ) then
+        return format("%.2fm", number/1e6)
+    elseif ( number >= 1e3 ) then
+        return format("%.2fk", number/1e3)
     end
 end
 
 -- Update the space display
-local function updater(self, event)
+local function UpdateTag(self, event)
     object = self
     self:SetText(self.tagString:gsub("%[([^%]:]+):?(.-)%]", tagger))
 
-    if(self.OnTagUpdate) then self:OnTagUpdate(event) end
+    if ( self.OnTagUpdate ) then self:OnTagUpdate(event) end
 end
 
-local function setTagString(self, tagString)
+local function SetTagString(self, tagString)
     self.tagString = tagString
     for tag in tagString:gmatch("%[([^%]:]+):?.-]") do
-        if(self.tagEvents[tag]) then
+        if ( self.tagEvents[tag] ) then
             for k, event in pairs(self.tagEvents[tag]) do
-                self.implementation:RegisterEvent(event, self, updater)
+                self.implementation:RegisterEvent(event, self, UpdateTag)
             end
         end
     end
@@ -87,31 +86,32 @@ cargBags:RegisterPlugin("TagDisplay", function(self, tagString, parent)
 
     local plugin = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     plugin.implementation = self.implementation
-    plugin.SetTagString = setTagString
+    plugin.SetTagString = SetTagString
     plugin.tags = tagPool
     plugin.tagEvents = tagEvents
     plugin.iconValues = "16:16:0:0"
-    plugin.forceEvent = function(event) updater(plugin, event) end
+    plugin.forceEvent = function(event) UpdateTag(plugin, event) end
 
-    setTagString(plugin, tagString)
+    SetTagString(plugin, tagString)
 
-    self.implementation:RegisterEvent("BAG_UPDATE", plugin, updater)
+    self.implementation:RegisterEvent("BAG_UPDATE", plugin, UpdateTag)
     return plugin
 end)
 
-local function createIcon(icon, iconValues)
-    if(type(iconValues) == "table") then
+local function CreateIcon(icon, iconValues)
+    if ( type(iconValues) == "table" ) then
         iconValues = table.concat(iconValues, ":")
+        return format("|T%s:%s|t", icon, iconValues)
     end
-    return ("|T%s:%s|t"):format(icon, iconValues)
-end
 
+    return CreateTextureMarkup(icon, 64, 64, 16, 16, 0, 1, 0, 1)
+end
 
 -- Tags
 
 tagPool["space"] = function(self, str)
-    local free,max = 0, 0
-    if(self.bags) then
+    local free, max = 0, 0
+    if ( self.bags ) then
         for _,id in pairs(self.bags) do
             free = free + GetContainerNumFreeSlots(id)
             max = max + GetContainerNumSlots(id)
@@ -127,54 +127,34 @@ tagPool["item"] = function(self, item)
     local bank = total-bags
 
     if(total > 0) then
-        return bags .. (bank and " ("..bank..")") .. createIcon(GetItemIcon(item), self.iconValues)
+        return bags .. (bank and " ("..bank..")") .. CreateIcon(GetItemIcon(item), self.iconValues)
     end
 end
 
 tagPool["currency"] = function(self, id)
     local name, count, icon, itemid = GetBackpackCurrencyInfo(id)
 
-    if(count) then
-        return FormatValue(count) .. createIcon(icon, self.iconValues)
+    if ( name ) then
+        return FormatValue(count) .. CreateIcon(icon, self.iconValues)
     end
 end
 tagEvents["currency"] = { "CURRENCY_DISPLAY_UPDATE" }
 
 tagPool["currencies"] = function(self)
-    local str
-    for i=1, GetNumWatchedTokens() do
-        local curr = self.tags["currency"](self, i)
-        if(curr) then
-            str = (str and str.." " or "")..curr
+    local watchedCurrencies = {}
+
+    for i=1, MAX_WATCHED_TOKENS do
+        local currency = self.tags["currency"](self, i)
+        if ( currency ) then
+            table.insert(watchedCurrencies, currency)
         end
     end
-    return str
+
+    return table.concat(watchedCurrencies, " ")
 end
 tagEvents["currencies"] = tagEvents["currency"]
 
 tagPool["money"] = function(self)
-    local money = GetMoney() or 0
-    local str
-
-    local iconpath = "Interface\\MoneyFrame\\UI-"
-    local goldicon = "%d|T"..iconpath.."GoldIcon:0|t"
-    local silvericon = "%s|T"..iconpath.."SilverIcon:0|t"
-    local coppericon = "%s|T"..iconpath.."CopperIcon:0|t"
-
-    local g,s,c = floor(money/1e4), floor(money/100) % 100, money % 100
-
-    -- if(g > 0) then str = (str and str.." " or "") .. g .. createIcon("Interface\\MoneyFrame\\UI-GoldIcon", self.iconValues) end
-    -- if(s > 0) then str = (str and str.." " or "") .. s .. createIcon("Interface\\MoneyFrame\\UI-SilverIcon", self.iconValues) end
-    -- if(c > 0) then str = (str and str.." " or "") .. c .. createIcon("Interface\\MoneyFrame\\UI-CopperIcon", self.iconValues) end
-
-    -- if(g > 0) then str = (str and str.." " or "") .. g .. "|cffffd100 G|r" end
-    -- if(s > 0) then str = (str and str.." " or "") .. s .. "|cffe6e6e6 S|r" end
-    -- if(c > 0) then str = (str and str.." " or "") .. c .. "|cffc8602c C|r" end
-
-    if(g > 0) then str = (str and str.." " or "") .. goldicon:format(g) end
-    if(s > 0) then str = (str and str.." " or "") .. silvericon:format(s) end
-    if(c > 0) then str = (str and str.." " or "") .. coppericon:format(c) end
-
-    return str
+    return GetMoneyString(GetMoney())
 end
 tagEvents["money"] = { "PLAYER_MONEY" }

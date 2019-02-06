@@ -29,105 +29,58 @@ DEPENDENCIES
 local addon, ns = ...
 local cargBags = ns.cargBags
 
-local function apply(self, container, text, mode)
-    if(text == "" or not text) then
-        container:ApplyToButtons(self.highlightFunction, true)
-    else
-        container:FilterForFunction(self.highlightFunction, self.currFilters)
-    end
+local function OpenSearch(frame)
+    frame:Hide()
+    frame.search:Show()
 end
 
-local function doSearch(self, text)
-    if(type(text) == "string") then
-        self:SetText(text)
-    else
-        text = self:GetText()
-    end
-
-    if(self.currFilters) then
-        self.currFilters:Empty()
-    end
-
-    self.currFilters = self.parent.implementation:ParseTextFilter(text, self.currFilters, self.textFilters)
-
-    if(self.isGlobal) then
-        for name, container in pairs(self.parent.implementation.contByName) do
-            apply(self, container, text)
-        end
-    else
-        apply(self, self.parent, text)
-    end
-
-    self.parent.implementation:OnEvent("BAG_UPDATE")
+local function CloseSearch(frame)
+    frame.target:Show()
+	frame:SetText("")
+	frame:ClearFocus()
+    frame:Hide()
 end
 
-local function target_openSearch(target)
-    target:Hide()
-    target.search:Show()
+local function Search_OnEnter(frame)
+    frame:ClearFocus()
+    if(frame.OnEnterPressed) then frame:OnEnterPressed() end
 end
 
-local function target_closeSearch(search)
-    search.target:Show()
-    search:Hide()
+local function Search_OnEscape(frame)
+    frame:ClearFocus()
+	frame:SetText("")
+    if(frame.OnEscapePressed) then frame:OnEscapePressed() end
 end
 
-local function onEscape(search)
-    doSearch(search, "")
-    search:ClearFocus()
-    if(search.OnEscapePressed) then search:OnEscapePressed() end
-end
-
-local function onEnter(search)
-    search:ClearFocus()
-    if(search.OnEnterPressed) then search:OnEnterPressed() end
+local function ClearButton_OnClick(self)
+    PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+	local editBox = self:GetParent()
+	editBox:SetText("")
+	editBox:ClearFocus()
 end
 
 cargBags:RegisterPlugin("SearchBar", function(self, target)
-    local search = CreateFrame("EditBox", nil, self)
-    search:SetFontObject(GameFontHighlight)
-    self.Search = search
+    local search = CreateFrame("EditBox", nil, self, "BagSearchBoxTemplate")
+    search:SetSize(96, 18)
+    search.searchIcon:Hide()
 
-    search.Clear = onEscape
-    search.DoSearch = search.doSearch
+    search:SetScript("OnEscapePressed", Search_OnEscape)
+    search:SetScript("OnEnterPressed", Search_OnEnter)
 
-    local left = search:CreateTexture(nil, "BACKGROUND")
-    left:SetTexture("Interface\\Common\\Common-Input-Border")
-    left:SetTexCoord(0, 0.0625, 0, 0.625)
-    left:SetWidth(8)
-    left:SetHeight(20)
-    left:SetPoint("LEFT", -5, 0)
-    search.Left = left
+    local clearButton = search.clearButton
+    clearButton:SetScript("OnClick", ClearButton_OnClick)
 
-    local right = search:CreateTexture(nil, "BACKGROUND")
-    right:SetTexture("Interface\\Common\\Common-Input-Border")
-    right:SetTexCoord(0.9375, 1, 0, 0.625)
-    right:SetWidth(8)
-    right:SetHeight(20)
-    right:SetPoint("RIGHT", 0, 0)
-    search.Right = right
-
-    local center = search:CreateTexture(nil, "BACKGROUND")
-    center:SetTexture("Interface\\Common\\Common-Input-Border")
-    center:SetTexCoord(0.0625, 0.9375, 0, 0.625)
-    center:SetHeight(20)
-    center:SetPoint("RIGHT", right, "LEFT", 0, 0)
-    center:SetPoint("LEFT", left, "RIGHT", 0, 0)
-    search.Center = center
-
-    search:SetScript("OnTextChanged", doSearch)
-    search:SetScript("OnEscapePressed", onEscape)
-    search:SetScript("OnEnterPressed", onEnter)
-
-    if(target) then
+    if ( target ) then
         search:SetAutoFocus(true)
         search:SetAllPoints(target)
         search:Hide()
 
         target.search, search.target = search, target
         target:RegisterForClicks("anyUp")
-        target:SetScript("OnClick", target_openSearch)
-        search:SetScript("OnEditFocusLost", target_closeSearch)
+        target:SetScript("OnClick", OpenSearch)
+        search:SetScript("OnEditFocusLost", CloseSearch)
     end
 
+    self.Search = search
     return search
 end)

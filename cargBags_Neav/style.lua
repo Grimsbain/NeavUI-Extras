@@ -4,6 +4,7 @@ local cargBags = ns.cargBags
 local _
 local L = cBneavL
 
+local itemSlotSize = ns.options.itemSlotSize
 local mediaPath = [[Interface\AddOns\cargBags_Neav\media\]]
 local Textures = {
     Background =    mediaPath .. "texture",
@@ -22,100 +23,677 @@ local Textures = {
     Border =        mediaPath .. "fer4"
 }
 
-local itemSlotSize = ns.options.itemSlotSize
-------------------------------------------
--- MyContainer specific
-------------------------------------------
+--[[!
+    Init container.
+]]
 local cbNeav = cargBags:GetImplementation("Neav")
 local MyContainer = cbNeav:GetContainerClass()
-
-local function GetNumFreeSlots(bagType)
-    local free, max = 0, 0
-    if ( bagType == "bag" ) then
-        for i = 0,4 do
-            free = free + GetContainerNumFreeSlots(i)
-            max = max + GetContainerNumSlots(i)
-        end
-    elseif ( bagType == "bankReagent" ) then
-        free = GetContainerNumFreeSlots(-3)
-        max = GetContainerNumSlots(-3)
-    else
-        local containerIDs = {-1, 5, 6, 7, 8, 9, 10, 11}
-        for _,i in next, containerIDs do
-            free = free + GetContainerNumFreeSlots(i)
-            max = max + GetContainerNumSlots(i)
-        end
-    end
-    return free, max
-end
-
-local QuickSort;
-do
-    local func = function(v1, v2)
-        if (v1 == nil) or (v2 == nil) then return (v1 and true or false) end
-        if v1[1] == -1 or v2[1] == -1 then
-            return v1[1] > v2[1] -- empty slots last
-        elseif v1[2] ~= v2[2] then
-            if v1[2] and v2[2] then
-                return v1[2] > v2[2] -- higher quality first
-            elseif (v1[2] == nil) or (v2[2] == nil) then
-                return (v1[2] and true or false)
-            else
-                return false
-            end
-        elseif v1[1] ~= v2[1] then
-            return v1[1] > v2[1] -- group identical item ids
-        else
-            return v1[4] > v2[4] -- full/larger stacks first
-        end
-    end;
-    QuickSort = function(tbl) table.sort(tbl, func) end
-end
-
 local BagFrames, BankFrames =  {}, {}
 
-function MyContainer:OnContentsChanged(forced)
+--[[!
+    Gets the number of free slots from a table of bag ids.
+    @param bagIDs <table>
+    @return free <number>
+]]
+
+local function GetNumFreeSlots(bagIDs)
+    local free = 0
+
+    for i = 1, #bagIDs do
+        local bagID = bagIDs[i]
+        free = free + GetContainerNumFreeSlots(bagID)
+    end
+
+    return free
+end
+
+--[[!
+    Gets the first free slot.
+    @param bagIDs <table>
+    @return bagID <number>, slotID <number>
+]]
+
+local function GetFirstFreeSlot(bagIDs)
+    for i = 1, #bagIDs do
+        local bagID = bagIDs[i]
+        local freeSlots = GetContainerNumFreeSlots(bagID)
+
+        for slotID = 1, GetContainerNumSlots(bagID) do
+            local link = GetContainerItemLink(bagID, slotID)
+            if ( not link ) then
+                return bagID, slotID
+            end
+        end
+    end
+
+    return false
+end
+
+--[[!
+    Sorts a list of items based off of item id, quality, and stack size.
+    Has handeling for empty slots and nil values.
+]]
+
+local function ItemSort(this, that)
+    if ( not this or not that ) then
+        return this and true or false
+    end
+
+    -- Empty slots last.
+    -- Higher quality first.
+    -- Group identical item ids.
+    -- Full/larger stacks first.
+
+    if ( this.id == -1 or that.id == -1 ) then
+        return this.id > that.id
+    elseif ( this.quality ~= that.quality ) then
+        if ( this.quality and that.quality ) then
+            return this.quality > that.quality
+        elseif ( not this.quality or not that.quality ) then
+            return this.quality and true or false
+        else
+            return false
+        end
+    elseif ( this.id ~= that.id ) then
+        return this.id > that.id
+    else
+        return this.count > that.count
+    end
+end
+
+local QuickSort = function(items) table.sort(items, ItemSort) end
+
+--[[!
+    Auto sells grey junk items to the vendor and prints the profit made.
+    Disabled for players lower than level 5.
+]]
+
+local function SellJunk()
+    if ( not cBneavCfg.SellJunk or UnitLevel("player") < 5 ) then
+        return
+    end
+
+    local profit, item = 0
+
+    for bagID = 0, NUM_BAG_SLOTS do
+        for slotID = 1, GetContainerNumSlots(bagID) do
+            item = cbNeav:GetItemInfo(bagID, slotID)
+            if ( item ) then
+                if ( item.quality == 0 and item.sellPrice ~= 0 ) then
+                    profit = profit + (item.sellPrice * item.count)
+                    UseContainerItem(bagID, slotID)
+                end
+            end
+        end
+    end
+
+    if ( profit > 0 ) then
+        print(string.format("%s %s", L.VendorTrash, GetMoneyString(profit)))
+    end
+end
+
+local eventWatcher = CreateFrame("Frame")
+eventWatcher:RegisterEvent("MERCHANT_SHOW")
+eventWatcher:SetScript("OnEvent", function(self, event, ...)
+    if ( event == "MERCHANT_SHOW" ) then
+        SellJunk()
+    end
+end)
+
+--[[!
+    Restack items.
+]]
+
+local function RestackItems(self)
+    if ( self.isBank ) then
+        SortBankBags()
+        SortReagentBankBags()
+    elseif ( self.isBag ) then
+        SortBags()
+    end
+end
+
+--[[!
+    Reset new items.
+]]
+
+local function ResetNewItems(self)
+    cB_KnownItems = cB_KnownItems or {}
+
+    if ( not cBneav.clean ) then
+        for item, itemCount in next, cB_KnownItems do
+            if ( type(item) == "string" ) then
+                cB_KnownItems[item] = nil
+            end
+        end
+        cBneav.clean = true
+    end
+
+    for bagID = 0, NUM_BAG_SLOTS do
+        local bagSize = GetContainerNumSlots(bagID)
+
+        if ( bagSize > 0 ) then
+            for slotID = 1, bagSize do
+                local item = cbNeav:GetItemInfo(bagID, slotID)
+
+                if ( item.id ) then
+                    if ( cB_KnownItems[item.id] ) then
+                        cB_KnownItems[item.id] = cB_KnownItems[item.id] + (item.stackCount and item.stackCount or 0)
+                    else
+                        cB_KnownItems[item.id] = item.stackCount and item.stackCount or 0
+                    end
+                end
+            end
+        end
+    end
+    cbNeav:UpdateBags()
+end
+
+function cbNeavResetNew()
+    ResetNewItems()
+end
+
+--[[!
+    Update container dimensions.
+]]
+
+local function UpdateDimensions(self)
+    local height = 0
+
+    -- Bag button space.
+    if ( self.BagBar and self.BagBar:IsShown() ) then
+        height = height + 40
+    end
+
+    -- Additional info display space.
+    if ( self.Space ) then
+        height = height + 16
+    end
+
+    -- Bag Frame Toggle
+    if ( self.bagToggle ) then
+        local fontHeight = ns.options.fonts.standard[2] + 8
+        local extraHeight = self.isBag and fontHeight or 0
+        height = height + 24 + extraHeight
+    end
+
+    -- Space for captions.
+    if ( self.Caption ) then
+        local fontHeight = ns.options.fonts.standard[2] + 12
+        height = height + fontHeight
+    end
+
+    self:SetSize(self.ContainerWidth, self.ContainerHeight + height)
+end
+
+local function SetFrameMovable(self)
+    self:SetMovable(true)
+    self:SetUserPlaced(true)
+    self:RegisterForClicks("LeftButton", "RightButton")
+
+    self:SetScript("OnDragStart", function(self)
+        if ( IsShiftKeyDown() and IsAltKeyDown() and cBneavCfg.Unlocked ) then
+            self:StartMoving()
+        end
+    end)
+
+    self:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+    end)
+end
+
+local function IconButton_OnEnter(self)
+    local r, g, b = GetClassColor(select(2, UnitClass("player")))
+    self.icon:SetVertexColor(r, g, b)
+
+    if ( self.tooltipText ) then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(self.tooltipText, nil, nil, nil, nil, true)
+        GameTooltip:Show()
+    end
+end
+
+local function IconButton_OnLeave(self)
+    if ( self.tag == "SellJunk" ) then
+        if ( cBneavCfg.SellJunk ) then
+            self.icon:SetVertexColor(0.8, 0.8, 0.8)
+        else
+            self.icon:SetVertexColor(0.4, 0.4, 0.4)
+        end
+    else
+        self.icon:SetVertexColor(0.8, 0.8, 0.8)
+    end
+
+    if ( GameTooltip:GetOwner() == self ) then
+        GameTooltip:Hide()
+    end
+end
+
+local function CreateMoverButton(parent, texture, tag)
+    local button = CreateFrame("Button", "$parent"..tag, parent)
+    button:SetWidth(17)
+    button:SetHeight(17)
+
+    button.icon = button:CreateTexture("$parentIcon", "ARTWORK")
+    button.icon:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
+    button.icon:SetWidth(16)
+    button.icon:SetHeight(16)
+    button.icon:SetTexture(texture)
+    button.icon:SetVertexColor(0.8, 0.8, 0.8)
+
+    button.tag = tag
+    button:SetScript("OnEnter", function() IconButton_OnEnter(button) end)
+    button:SetScript("OnLeave", function() IconButton_OnLeave(button) end)
+
+    return button
+end
+
+local function CreateIconButton(name, parent, texture, point, hint, isBag)
+    local button = CreateFrame("Button", name.."Button", parent)
+    button:SetWidth(17)
+    button:SetHeight(17)
+
+    button.tag = name
+    button.tooltipText = hint
+    button:SetScript("OnEnter", function() IconButton_OnEnter(button) end)
+    button:SetScript("OnLeave", function() IconButton_OnLeave(button) end)
+
+    button.icon = button:CreateTexture("$parentIcon", "ARTWORK")
+    button.icon:SetPoint(point, button, point, point == "BOTTOMLEFT" and 2 or -2, 2)
+    button.icon:SetWidth(16)
+    button.icon:SetHeight(16)
+    button.icon:SetTexture(texture)
+
+    if ( texture == [[Interface\ContainerFrame\Bags]] ) then
+        button.icon:SetTexCoord(0.12109375, 0.23046875, 0.7265625, 0.9296875)
+    end
+
+    if ( name == "SellJunk" ) then
+        if ( cBneavCfg.SellJunk ) then
+            button.icon:SetVertexColor(0.8, 0.8, 0.8)
+        else
+            button.icon:SetVertexColor(0.4, 0.4, 0.4)
+        end
+    else
+        button.icon:SetVertexColor(0.8, 0.8, 0.8)
+    end
+
+    return button
+end
+
+
+
+function MyContainer:OnCreate(name, settings)
+    self:EnableMouse(true)
+    self:SetFrameStrata("HIGH")
+    tinsert(UISpecialFrames, self:GetName()) -- Close on "Esc"
+
+    self.settings = settings or {}
+    self.name = name
+    self.isBag = name == "cBneav_Bag"
+    self.isBank = name == "cBneav_Bank"
+    self.isReagentBank = name == "cBneav_BankReagent"
+    self.isBankBags = name:match("Bank")
+
+    table.insert((self.isBankBags and BankFrames or BagFrames), self)
+
+    if ( self.isBag or self.isBank ) then
+        SetFrameMovable(self)
+    end
+
+    if ( self.isBank or self.isBankBags or self.isReagentBank ) then
+        self.Columns = 14
+    else
+        self.Columns = 8
+    end
+
+    self.ContainerWidth = (itemSlotSize + 2) * self.Columns + 2
+    self.ContainerHeight = 0
+    self.UpdateDimensions = UpdateDimensions
+    self:UpdateDimensions()
+
+    -- The frame background
+    local backgroundColor = ns.options.colors.background
+    local background = CreateFrame("Frame", nil, self)
+    background:SetFrameStrata("HIGH")
+    background:SetFrameLevel(1)
+    background:SetPoint("TOPRIGHT", 4, 4)
+    background:SetPoint("BOTTOMLEFT", -4, -4)
+
+    background:SetBackdrop{
+        bgFile = Textures.Background,
+        edgeFile = Textures.Background,
+        tile = true, tileSize = 16, edgeSize = 1,
+        insets = {left = 1, right = 1, top = 1, bottom = 1},
+    }
+    background:SetBackdropColor(unpack(backgroundColor))
+    background:SetBackdropBorderColor(0, 0, 0, 1)
+
+    if ( IsAddOnLoaded("!Beautycase") ) then
+        background:CreateBeautyBorder(11)
+        background:SetBeautyBorderColor(0.40, 0.40, 0.40)
+        background:SetBeautyBorderPadding(1)
+    end
+
+    -- Bag Caption & Close Button
+    local title = L.bagCaptions[self.name] or (self.isBankBags and strsub(self.name, 5)) or self.name
+    local caption = background:CreateFontString("$parentCaption", "OVERLAY")
+    caption:SetFont(unpack(ns.options.fonts.standard))
+    caption:SetText(title)
+    caption:SetPoint("TOPLEFT", 7.5, -7.5)
+    self.Caption = caption
+
+    if ( self.isBag or self.isBank ) then
+        local close = CreateFrame("Button", "$parentClose", self, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", 8, 8)
+        close:SetDisabledTexture(mediaPath.."CloseButton\\UI-Panel-MinimizeButton-Disabled")
+        close:SetNormalTexture(mediaPath.."CloseButton\\UI-Panel-MinimizeButton-Up")
+        close:SetPushedTexture(mediaPath.."CloseButton\\UI-Panel-MinimizeButton-Down")
+        close:SetHighlightTexture(mediaPath.."CloseButton\\UI-Panel-MinimizeButton-Highlight", "ADD")
+        close:SetScript("OnClick", function(self)
+            if ( cbNeav:AtBank() ) then
+                CloseBankFrame()
+            else
+                CloseAllBags()
+            end
+        end)
+    end
+
+    -- Bag Location Movers
+    if ( self.settings.isCustomBag ) then
+        local function MoveLeftRight(direction)
+            local index = -1
+
+            for i=1, #cB_CustomBags do
+                local bag = cB_CustomBags[i]
+                if ( bag.name == name ) then
+                    index = i
+                end
+            end
+
+            if ( index == -1 ) then
+                return
+            end
+
+            local newColumn = (cB_CustomBags[index].col + ((direction == "left") and 1 or -1)) % 2
+            cB_CustomBags[index].col = newColumn
+            cbNeav:CreateAnchors()
+        end
+
+        local function MoveUpDown(direction)
+            local index = -1
+
+            for i=1, #cB_CustomBags do
+                local bag = cB_CustomBags[i]
+                if ( bag.name == name ) then
+                    index = i
+                end
+            end
+
+            if ( index == -1 ) then
+                return
+            end
+
+            local position = index
+            local delta = direction == "up" and 1 or -1
+
+            repeat
+                position = position + delta
+            until ( not cB_CustomBags[position] or cB_CustomBags[position].col == cB_CustomBags[index].col )
+
+            if ( cB_CustomBags[position] ~= nil ) then
+                local element = cB_CustomBags[index]
+                cB_CustomBags[index] = cB_CustomBags[position]
+                cB_CustomBags[position] = element
+                cbNeav:CreateAnchors()
+            end
+        end
+
+        local RightButton = CreateMoverButton(self, Textures.Right, "Right")
+        RightButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, 0)
+        RightButton:SetScript("OnClick", function() MoveLeftRight("right") end)
+        self.RightButton = RightButton
+
+        local LeftButton = CreateMoverButton(self, Textures.Left, "Left")
+        LeftButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", -17, 0)
+        LeftButton:SetScript("OnClick", function() MoveLeftRight("left") end)
+        self.LeftButton = LeftButton
+
+        local DownButton = CreateMoverButton(self, Textures.Down, "Down")
+        DownButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", -34, 0)
+        DownButton:SetScript("OnClick", function() MoveUpDown("down") end)
+        self.DownButton = DownButton
+
+        local UpButton = CreateMoverButton(self, Textures.Up, "Up")
+        UpButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", -51, 0)
+        UpButton:SetScript("OnClick", function() MoveUpDown("up") end)
+        self.UpButton = UpButton
+    end
+
+    if ( self.isBag or self.isBank ) then
+        -- Bag bar for changing bags
+        local prevButton = nil
+        local bagType = self.isBag and "bags" or "bank"
+        local bagStyle = self.isBag and "backpack+bags" or "bank"
+        local totalBags = self.isBag and NUM_BAG_SLOTS or 7
+
+        local bagButtons = self:SpawnPlugin("BagBar", bagStyle)
+        bagButtons:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -2, 25)
+        bagButtons:SetSize(bagButtons:LayoutButtons("grid", totalBags))
+        bagButtons.highlightFunction = function(button, match) button:SetAlpha(match and 1 or 0.1) end
+        bagButtons.isGlobal = true
+        bagButtons:Hide()
+        self.BagBar = bagButtons
+
+        -- Bag Buttons Toggle
+        self.bagToggle = CreateIconButton("Bags", self, Textures.BagToggle, "BOTTOMRIGHT", "Toggle Bags", self.isBag)
+        self.bagToggle:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, 0)
+        prevButton = self.bagToggle
+
+        self.bagToggle:SetScript("OnClick", function()
+            if ( self.BagBar:IsShown() ) then
+                self.BagBar:Hide()
+
+                if ( self.currencies ) then
+                    self.currencies:Show()
+                end
+            else
+                self.BagBar:Show()
+
+                if ( self.currencies ) then
+                    self.currencies:Hide()
+                end
+            end
+            self:UpdateDimensions()
+        end)
+
+        -- Reset New Items
+        if ( self.isBag and cBneavCfg.NewItems ) then
+            self.resetBtn = CreateIconButton("ResetNew", self, Textures.ResetNew, "BOTTOMRIGHT", "Reset New", self.isBag)
+            self.resetBtn:SetPoint("BOTTOMRIGHT", prevButton, "BOTTOMLEFT", 0, 0)
+            self.resetBtn:SetScript("OnClick", function() ResetNewItems(self) end)
+            prevButton = self.resetBtn
+        end
+
+        -- Restack Items
+        if ( cBneavCfg.Restack ) then
+            self.restackBtn = CreateIconButton("Restack", self, Textures.Restack, "BOTTOMRIGHT", "Restack", self.isBag)
+            self.restackBtn:SetPoint("BOTTOMRIGHT", prevButton, "BOTTOMLEFT", 0, 0)
+            self.restackBtn:SetScript("OnClick", function() RestackItems(self) end)
+            prevButton = self.restackBtn
+        end
+
+        -- Show Options
+        self.optionsBtn = CreateIconButton("Options", self, Textures.Config, "BOTTOMRIGHT", "Options", self.isBag)
+        self.optionsBtn:SetPoint("BOTTOMRIGHT", prevButton, "BOTTOMLEFT", 0, 0)
+        prevButton = self.optionsBtn
+        self.optionsBtn:SetScript("OnClick", function()
+            SlashCmdList.CBNEAV("")
+            print("Usage: /cbneav |cffffff00command|r")
+        end)
+
+        -- Button to toggle Sell Junk:
+        if ( self.isBag ) then
+            local junkHint = cBneavCfg.SellJunk and "Sell Junk |cffd0d0d0(on)|r" or "Sell Junk |cffd0d0d0(off)|r"
+
+            self.junkBtn = CreateIconButton("SellJunk", self, Textures.SellJunk, "BOTTOMRIGHT", junkHint, self.isBag)
+            self.junkBtn:SetPoint("BOTTOMRIGHT", prevButton, "BOTTOMLEFT", 0, 0)
+            self.junkBtn:SetScript("OnClick", function()
+                cBneavCfg.SellJunk = not cBneavCfg.SellJunk
+
+                if ( cBneavCfg.SellJunk ) then
+                    self.junkBtn.tooltipText = "Sell Junk |cffd0d0d0(on)|r"
+                else
+                    self.junkBtn.tooltipText = "Sell Junk |cffd0d0d0(off)|r"
+                end
+            end)
+            prevButton = self.junkBtn
+        end
+
+        -- Button to send reagents to Reagent Bank:
+        if ( self.isBank ) then
+            self.reagentBtn = CreateIconButton("SendReagents", self, Textures.Deposit, "BOTTOMRIGHT", REAGENTBANK_DEPOSIT, self.isBag)
+            self.reagentBtn:SetPoint("BOTTOMRIGHT", prevButton, "BOTTOMLEFT", 0, 0)
+            self.reagentBtn:SetScript("OnClick", function()
+                DepositReagentBank()
+            end)
+        end
+    end
+
+    -- Item Drop Target
+    if ( self.isBag or self.isBank or self.isReagentBank ) then
+        local dropSize = itemSlotSize - 1
+
+        self.DropTarget = CreateFrame("Button", self.name.."DropTarget", self, "ItemButtonTemplate")
+        self.DropTarget:SetSize(dropSize, dropSize)
+
+        local normalTexture = _G[self.DropTarget:GetName().."NormalTexture"]
+        if ( normalTexture ) then
+            normalTexture:SetTexture(nil)
+        end
+
+        self.DropTarget.bg = CreateFrame("Frame", "$parentBG", self.DropTarget)
+        self.DropTarget.bg:SetAllPoints()
+        self.DropTarget.bg:SetBackdrop({
+            bgFile = [[Interface\ChatFrame\ChatFrameBackground]],
+            edgeFile = [[Interface\Buttons\WHITE8x8]],
+            tile = false, tileSize = 16, edgeSize = 1,
+        })
+        self.DropTarget.bg:SetBackdropColor(1, 1, 1, 0.1)
+        self.DropTarget.bg:SetBackdropBorderColor(0, 0, 0, 1)
+
+        local DropTargetProcessItem = function()
+            if ( GetCursorInfo() ) then
+                local bagIDS = self.isBag and {0,1,2,3,4} or self.isBank and {-1,5,6,7,8,9,10,11} or {-3}
+                local bagID, slotID = GetFirstFreeSlot(bagIDS)
+
+                if ( bagID and not InCombatLockdown() ) then
+                    PickupContainerItem(bagID, slotID)
+                end
+            end
+        end
+
+        self.DropTarget:SetScript("OnMouseUp", DropTargetProcessItem)
+        self.DropTarget:SetScript("OnReceiveDrag", DropTargetProcessItem)
+
+        self.EmptySlotCounter = self:CreateFontString("$parentEmptySlotCounter", "OVERLAY")
+        self.EmptySlotCounter:SetFont(unpack(ns.options.fonts.standard))
+        self.EmptySlotCounter:SetPoint("BOTTOMRIGHT", self.DropTarget, "BOTTOMRIGHT", 1.5, 1.5)
+        self.EmptySlotCounter:SetJustifyH("LEFT")
+
+        if ( cBneavCfg.CompressEmpty ) then
+            self.DropTarget:Show()
+            self.EmptySlotCounter:Show()
+        else
+            self.DropTarget:Hide()
+            self.EmptySlotCounter:Hide()
+        end
+    end
+
+    if ( self.isBag ) then
+        local infoFrame = CreateFrame("Button", nil, self)
+        infoFrame:SetPoint("BOTTOMLEFT", 5, -6)
+        infoFrame:SetPoint("BOTTOMRIGHT", -86, -6)
+        infoFrame:SetHeight(32)
+
+        -- Item Search
+        local searchBar = self:SpawnPlugin("SearchBar", infoFrame)
+
+        local searchIcon = background:CreateTexture("$parentSearchIcon", "ARTWORK")
+        searchIcon:SetTexture([[Interface\Common\UI-Searchbox-Icon]])
+        searchIcon:SetVertexColor(0.8, 0.8, 0.8)
+        searchIcon:SetPoint("BOTTOMLEFT", infoFrame, "BOTTOMLEFT", -3, 6)
+        searchIcon:SetWidth(16)
+        searchIcon:SetHeight(16)
+
+        -- Player Money
+        local money = self:SpawnPlugin("TagDisplay", "[money]", self)
+        money:SetPoint("TOPRIGHT", self, -30, -2.5)
+        money:SetFont(unpack(ns.options.fonts.standard))
+        money:SetJustifyH("RIGHT")
+        money:SetShadowColor(0, 0, 0, 0)
+        self.money = money
+
+        -- Tracked Currencies
+        local currencies = self:SpawnPlugin("TagDisplay", "[currencies]", self)
+        currencies:SetPoint("BOTTOMLEFT", infoFrame, -0.5, 31.5)
+        currencies:SetFont(unpack(ns.options.fonts.standard))
+        currencies:SetJustifyH("LEFT")
+        currencies:SetShadowColor(0, 0, 0, 0)
+        currencies:SetWordWrap(true)
+        self.currencies = currencies
+    end
+
+    self:SetScale(cBneavCfg.scale)
+    return self
+end
+
+--[[!
+    Updates the bags when the contents change.
+]]
+
+local buttonIDs = {}
+
+function MyContainer:OnContentsChanged()
     local col, row = 0, 0
     local yPosOffs = self.Caption and 20 or 0
     local isEmpty = true
 
-    local tName = self.name
-    local tBankBags = string.find(tName, "Bank")
-    local tBank = tBankBags or (tName == "NeavcBneav_Bank")
-    local tReagent = (tName == "NeavcBneav_BankReagent")
+    local name = self.name
+    local isBankBags = self.isBankBags
+    local isBank = self.isBank
+    local isReagentBank = self.isReagentBank
 
-    local numSlotsBag = {GetNumFreeSlots("bag")}
-    local numSlotsBank = {GetNumFreeSlots("bank")}
-    local numSlotsReagent = {GetNumFreeSlots("bankReagent")}
-
-    local usedSlotsBag = numSlotsBag[2] - numSlotsBag[1]
-    local usedSlotsBank = numSlotsBank[2] - numSlotsBank[1]
-    local usedSlotsReagent = numSlotsReagent[2] - numSlotsReagent[1]
-
-    local oldColums = self.Columns
-    if (tBank or tBankBags or tReagent ) then
-        self.Columns = (usedSlotsBank > ns.options.sizes.bank.largeItemCount) and ns.options.sizes.bank.columnsLarge or ns.options.sizes.bank.columnsSmall
---  elseif (tReagent ) then
---      self.Columns = (usedSlotsReagent > ns.options.sizes.bank.largeItemCount) and ns.options.sizes.bank.columnsLarge or ns.options.sizes.bank.columnsSmall
-    else
-        self.Columns = (usedSlotsBag > ns.options.sizes.bags.largeItemCount) and ns.options.sizes.bags.columnsLarge or ns.options.sizes.bags.columnsSmall
-    end
-
-    local needColumnUpdate = (self.Columns ~= oldColums)
-
-    local buttonIDs = {}
-    for i, button in pairs(self.buttons) do
+    -- Setup Button IDs
+    for i=1, #self.buttons do
+        local button = self.buttons[i]
         local item = cbNeav:GetItemInfo(button.bagID, button.slotID)
-        if item.link then
-            buttonIDs[i] = { item.id, item.rarity, button, item.count }
+
+        if ( item.link ) then
+            buttonIDs[i] = {
+                frame = button,
+                id = item.id,
+                quality = item.quality,
+                count = item.count
+            }
         else
-            buttonIDs[i] = { -1, -2, button, -1 }
+            buttonIDs[i] = {
+                frame = button,
+                id = -1,
+                quality = -2,
+                count = -1
+            }
         end
     end
-    if ((tBank or tReagent) and cBneavCfg.SortBank) or (not (tBank or tReagent) and cBneavCfg.SortBags ) then QuickSort(buttonIDs) end
 
-    for _,v in ipairs(buttonIDs) do
-        local button = v[3]
+    -- Sort Buttons
+    if ( ((isBank or isReagentBank) and cBneavCfg.SortBank) or (not (isBank or isReagentBank) and cBneavCfg.SortBags) ) then
+        QuickSort(buttonIDs)
+    end
+
+    -- Layout Buttons
+    for i=1, #buttonIDs do
+        local button = buttonIDs[i].frame
         button:ClearAllPoints()
 
         local xPos = col * (itemSlotSize + 2) + 2
@@ -130,15 +708,18 @@ function MyContainer:OnContentsChanged(forced)
         end
         isEmpty = false
     end
+    wipe(buttonIDs)
 
-    if cBneavCfg.CompressEmpty then
+    -- Drop Target
+    if ( cBneavCfg.CompressEmpty ) then
         local xPos = col * (itemSlotSize + 2) + 2
         local yPos = (-1 * row * (itemSlotSize + 2)) - yPosOffs
 
-        local tDrop = self.DropTarget
-        if tDrop then
-            tDrop:ClearAllPoints()
-            tDrop:SetPoint("TOPLEFT", self, "TOPLEFT", xPos, yPos)
+        local dropTarget = self.DropTarget
+        if ( dropTarget ) then
+            dropTarget:ClearAllPoints()
+            dropTarget:SetPoint("TOPLEFT", self, "TOPLEFT", xPos, yPos)
+
             if ( col >= self.Columns-1 ) then
                 col = 0
                 row = row + 1
@@ -147,23 +728,24 @@ function MyContainer:OnContentsChanged(forced)
             end
         end
 
-        cB_Bags.main.EmptySlotCounter:SetText(GetNumFreeSlots("bag"))
-        cB_Bags.bank.EmptySlotCounter:SetText(GetNumFreeSlots("bank"))
-        cB_Bags.bankReagent.EmptySlotCounter:SetText(GetNumFreeSlots("bankReagent"))
+        cB_Bags.main.EmptySlotCounter:SetText(GetNumFreeSlots({0, 1, 2, 3, 4}))
+        cB_Bags.bank.EmptySlotCounter:SetText(GetNumFreeSlots({-1, 5, 6, 7, 8, 9, 10, 11}))
+        cB_Bags.bankReagent.EmptySlotCounter:SetText(GetNumFreeSlots({-3}))
     end
 
-    -- This variable stores the size of the item button container
+    -- Update container size.
     self.ContainerHeight = (row + (col > 0 and 1 or 0)) * (itemSlotSize + 2)
+    self.ContainerWidth = (itemSlotSize + 2) * self.Columns + 2
+    self:UpdateDimensions()
 
-    if ( self.UpdateDimensions ) then self:UpdateDimensions() end -- Update the bag's height
-    self:SetWidth((itemSlotSize + 2) * self.Columns + 2)
-    local t = (tName == "cBneav_Bag") or (tName == "cBneav_Bank") or (tName == "cBneav_BankReagent")
-    local tAS = (tName == "cBneav_Ammo") or (tName == "cBneav_Soulshards")
+    -- Bag Visibility
+    local isParentBag = name == "cBneav_Bag" or name == "cBneav_Bank" or name == "cBneav_BankReagent"
     local bankShown = cB_Bags.bank:IsShown()
-    if ( not tBankBags and cB_Bags.main:IsShown() and not (t or tAS) or (tBankBags and bankShown) ) then
-        if isEmpty then
+
+    if ( not isBankBags and cB_Bags.main:IsShown() and not isParentBag or (isBankBags and bankShown) ) then
+        if ( isEmpty ) then
             self:Hide()
-            if bankShown then
+            if ( bankShown ) then
                 cB_Bags.bank:Show()
             end
         else
@@ -171,658 +753,8 @@ function MyContainer:OnContentsChanged(forced)
         end
     end
 
-    cB_BagHidden[tName] = (not t) and isEmpty or false
+    cB_BagHidden[name] = not isParentBag and isEmpty or false
     cbNeav:UpdateAnchors(self)
-
-    --update all other bags as well
-    if needColumnUpdate and not forced then
-        if tBankBags then
-            local t = BankFrames
-            for i=1,#t do
-                if t[i].name ~= tName then
-                    t[i]:OnContentsChanged(true)
-                end
-            end
-        else
-            local t = BagFrames
-            for i=1,#t do
-                if t[i].name ~= tName then
-                    t[i]:OnContentsChanged(true)
-                end
-            end
-        end
-    end
-end
-
---[[function MyContainer:OnButtonAdd(button)
-    if not button.Border then return end
-
-    local _,bagType = GetContainerNumFreeSlots(button.bagID)
-    if button.bagID == KEYRING_CONTAINER then
-        button.Border:SetBackdropBorderColor(0, 0, 0)     -- Key ring
-    elseif bagType and bagType > 0 and bagType < 8 then
-        button.Border:SetBackdropBorderColor(1, 1, 0)       -- Ammo bag
-    elseif bagType and bagType > 4 then
-        button.Border:SetBackdropBorderColor(1, 1, 1)       -- Profession bags
-    else
-        button.Border:SetBackdropBorderColor(0, 0, 0)       -- Normal bags
-    end
-end]]--
-
--- Sell Junk
-local JS = CreateFrame("Frame")
-JS:RegisterEvent("MERCHANT_SHOW")
-local function SellJunk()
-    if ( not cBneavCfg.SellJunk or UnitLevel("player") < 5 ) then
-        return
-    end
-
-    local Profit, SoldCount = 0, 0
-    local item
-
-    for BagID = 0, 4 do
-        for BagSlot = 1, GetContainerNumSlots(BagID) do
-            item = cbNeav:GetItemInfo(BagID, BagSlot)
-            if item then
-                if item.rarity == 0 and item.sellPrice ~= 0 then
-                    Profit = Profit + (item.sellPrice * item.count)
-                    SoldCount = SoldCount + 1
-                    UseContainerItem(BagID, BagSlot)
-                end
-            end
-        end
-    end
-
-    if Profit > 0 then
-        local g, s, c = math.floor(Profit / 10000) or 0, math.floor((Profit % 10000) / 100) or 0, Profit % 100
-        print("Vendor trash sold: |cff00a956+|r |cffffffff"..g.."\124TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0\124t "..s.."\124TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0\124t "..c.."\124TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0\124t".."|r")
-    end
-end
-JS:SetScript("OnEvent", function() SellJunk() end)
-
--- Restack Items
-local restackItems = function(self)
-    local tBag, tBank = (self.name == "cBneav_Bag"), (self.name == "cBneav_Bank")
-
-    if tBank then
-        SortBankBags()
-        SortReagentBankBags()
-    elseif tBag then
-        SortBags()
-    end
-end
-
--- Reset New
-local resetNewItems = function(self)
-    cB_KnownItems = cB_KnownItems or {}
-    if not cBneav.clean then
-        for item, numItem in next, cB_KnownItems do
-            if type(item) == "string" then
-                cB_KnownItems[item] = nil
-            end
-        end
-        cBneav.clean = true
-    end
-    for bag = 0, 4 do
-        local tNumSlots = GetContainerNumSlots(bag)
-        if tNumSlots > 0 then
-            for slot = 1, tNumSlots do
-                local item = cbNeav:GetItemInfo(bag, slot)
-
-                if item.id then
-                    if cB_KnownItems[item.id] then
-                        cB_KnownItems[item.id] = cB_KnownItems[item.id] + (item.stackCount and item.stackCount or 0)
-                    else
-                        cB_KnownItems[item.id] = item.stackCount and item.stackCount or 0
-                    end
-                end
-            end
-        end
-    end
-    cbNeav:UpdateBags()
-end
-function cbNeavResetNew()
-    resetNewItems()
-end
-
-local UpdateDimensions = function(self)
-    local height = 0            -- Normal margin space
-    if self.BagBar and self.BagBar:IsShown() then
-        height = height + 40    -- Bag button space
-    end
-    if self.Space then
-        height = height + 16    -- additional info display space
-    end
-    if self.bagToggle then
-        local tBag = (self.name == "cBneav_Bag")
-        local fheight = ns.options.fonts.standard[2] + 4
-        local extraHeight = (tBag) and (fheight + 4) or 0
-        height = height + 24 + extraHeight
-    end
-    if self.Caption then        -- Space for captions
-        local fheight = ns.options.fonts.standard[2] + 12
-        height = height + fheight
-    end
-    self:SetHeight(self.ContainerHeight + height)
-end
-
-local SetFrameMovable = function(frame, moveable)
-    frame:SetMovable(true)
-    frame:SetUserPlaced(true)
-    frame:RegisterForClicks("LeftButton", "RightButton")
-
-    frame:SetScript("OnDragStart", function(self)
-        if ( IsShiftKeyDown() and IsAltKeyDown() and moveable ) then
-            frame:StartMoving()
-        end
-    end)
-
-    frame:SetScript("OnDragStop", function(self)
-        frame:StopMovingOrSizing()
-    end)
-end
-
-local function IconButton_OnEnter(self)
-    self.mouseover = true
-
-    local r, g, b = GetClassColor(select(2, UnitClass("player")))
-    self.icon:SetVertexColor(r, g, b)
-
-    if self.tooltip then
-        self.tooltip:Show()
-        self.tooltipIcon:Show()
-    end
-end
-
-local function IconButton_OnLeave(self)
-    self.mouseover = false
-    if self.tag == "SellJunk" then
-        if cBneavCfg.SellJunk then
-            self.icon:SetVertexColor(0.8, 0.8, 0.8)
-        else
-            self.icon:SetVertexColor(0.4, 0.4, 0.4)
-        end
-    else
-        self.icon:SetVertexColor(0.8, 0.8, 0.8)
-    end
-    if self.tooltip then
-        self.tooltip:Hide()
-        self.tooltipIcon:Hide()
-    end
-end
-
-local createMoverButton = function(parent, texture, tag)
-    local button = CreateFrame("Button", nil, parent)
-    button:SetWidth(17)
-    button:SetHeight(17)
-
-    button.icon = button:CreateTexture(nil, "ARTWORK")
-    button.icon:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
-    button.icon:SetWidth(16)
-    button.icon:SetHeight(16)
-    button.icon:SetTexture(texture)
-    button.icon:SetVertexColor(0.8, 0.8, 0.8)
-
-    button.tag = tag
-    button:SetScript("OnEnter", function() IconButton_OnEnter(button) end)
-    button:SetScript("OnLeave", function() IconButton_OnLeave(button) end)
-    button.mouseover = false
-
-    return button
-end
-
-local createIconButton = function(name, parent, texture, point, hint, isBag)
-    local button = CreateFrame("Button", nil, parent)
-    button:SetWidth(17)
-    button:SetHeight(17)
-
-    button.icon = button:CreateTexture(nil, "ARTWORK")
-    button.icon:SetPoint(point, button, point, point == "BOTTOMLEFT" and 2 or -2, 2)
-    button.icon:SetWidth(16)
-    button.icon:SetHeight(16)
-    button.icon:SetTexture(texture)
-    if texture == "Interface\\ContainerFrame\\Bags" then
-        button.icon:SetTexCoord(0.12109375, 0.23046875, 0.7265625, 0.9296875)
-    end
-
-    if name == "SellJunk" then
-        if cBneavCfg.SellJunk then
-            button.icon:SetVertexColor(0.8, 0.8, 0.8)
-        else
-            button.icon:SetVertexColor(0.4, 0.4, 0.4)
-        end
-    else
-        button.icon:SetVertexColor(0.8, 0.8, 0.8)
-    end
-
-    button.tooltip = button:CreateFontString()
-    -- button.tooltip:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", isBag and -76 or -59, 4.5)
-    button.tooltip:SetFont(unpack(ns.options.fonts.standard))
-
-    button.tooltip:SetJustifyH("RIGHT")
-    button.tooltip:SetText(hint)
-    button.tooltip:SetTextColor(0.8, 0.8, 0.8)
-    button.tooltip:Hide()
-
-    button.tooltipIcon = button:CreateTexture(nil, "ARTWORK")
-    -- button.tooltipIcon:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", isBag and -71 or -54, 1)
-    button.tooltipIcon:SetWidth(16)
-    button.tooltipIcon:SetHeight(16)
-    button.tooltipIcon:SetTexture(Textures.TooltipIcon)
-    button.tooltipIcon:SetVertexColor(0.9, 0.2, 0.2)
-    button.tooltipIcon:Hide()
-
-    button.tag = name
-    button:SetScript("OnEnter", function() IconButton_OnEnter(button) end)
-    button:SetScript("OnLeave", function() IconButton_OnLeave(button) end)
-    button.mouseover = false
-
-    return button
-end
-
-
-local GetFirstFreeSlot = function(bagtype)
-    if bagtype == "bag" then
-        for i = 0,4 do
-            local t = GetContainerNumFreeSlots(i)
-            if t > 0 then
-                local tNumSlots = GetContainerNumSlots(i)
-                for j = 1,tNumSlots do
-                    local tLink = GetContainerItemLink(i,j)
-                    if not tLink then return i,j end
-                end
-            end
-        end
-    elseif bagtype == "bankReagent" then
-        local bagID = ReagentBankFrame:GetID() -- -3
-        local t = GetContainerNumFreeSlots(bagID)
-        if t > 0 then
-            local tNumSlots = GetContainerNumSlots(bagID)
-            for j = 1,tNumSlots do
-                local tLink = GetContainerItemLink(bagID,j)
-                if not tLink then return bagID,j end
-            end
-        end
-    else
-        local containerIDs = {-1,5,6,7,8,9,10,11}
-        for _,i in next, containerIDs do
-            local t = GetContainerNumFreeSlots(i)
-            if t > 0 then
-                local tNumSlots = GetContainerNumSlots(i)
-                for j = 1,tNumSlots do
-                    local tLink = GetContainerItemLink(i,j)
-                    if not tLink then return i,j end
-                end
-            end
-        end
-    end
-    return false
-end
-
-function MyContainer:OnCreate(name, settings)
-    settings = settings or {}
-    self.Settings = settings
-    self.name = name
-
-    local tBag, tBank, tReagent = (name == "cBneav_Bag"), (name == "cBneav_Bank"), (name == "cBneav_BankReagent")
-    local tBankBags = string.find(name, "Bank")
-
-    table.insert((tBankBags and BankFrames or BagFrames), self)
-
-    local numSlotsBag = {GetNumFreeSlots("bag")}
-    local numSlotsBank = {GetNumFreeSlots("bank")}
-    local numSlotsReagent = {GetNumFreeSlots("bankReagent")}
-
-    local usedSlotsBag = numSlotsBag[2] - numSlotsBag[1]
-    local usedSlotsBank = numSlotsBank[2] - numSlotsBank[1]
-    local usedSlotsReagent = numSlotsReagent[2] - numSlotsReagent[1]
-
-    self:EnableMouse(true)
-
-    self.UpdateDimensions = UpdateDimensions
-
-    self:SetFrameStrata("HIGH")
-    tinsert(UISpecialFrames, self:GetName()) -- Close on "Esc"
-
-    if ( tBag or tBank ) then
-        SetFrameMovable(self, cBneavCfg.Unlocked)
-    end
-
-    if ( tBank or tBankBags ) then
-        self.Columns = (usedSlotsBank > ns.options.sizes.bank.largeItemCount) and ns.options.sizes.bank.columnsLarge or ns.options.sizes.bank.columnsSmall
-    elseif ( tReagent ) then
-        self.Columns = (usedSlotsReagent > ns.options.sizes.bank.largeItemCount) and ns.options.sizes.bank.columnsLarge or ns.options.sizes.bank.columnsSmall
-    else
-        self.Columns = (usedSlotsBag > ns.options.sizes.bags.largeItemCount) and ns.options.sizes.bags.columnsLarge or ns.options.sizes.bags.columnsSmall
-    end
-    self.ContainerHeight = 0
-    self:UpdateDimensions()
-    self:SetWidth((itemSlotSize + 2) * self.Columns + 2)
-
-    -- The frame background
-    local tBankCustom = (tBankBags and not cBneavCfg.BankBlack)
-    local color_rb = ns.options.colors.background[1]
-    local color_gb = tBankCustom and .2 or ns.options.colors.background[2]
-    local color_bb = tBankCustom and .3 or ns.options.colors.background[3]
-    local alpha_fb = ns.options.colors.background[4]
-
-    local background = CreateFrame("Frame", nil, self)
-    background:SetBackdrop{
-        bgFile = Textures.Background,
-        edgeFile = Textures.Background,
-        tile = true, tileSize = 16, edgeSize = 1,
-        insets = {left = 1, right = 1, top = 1, bottom = 1},
-    }
-    background:SetFrameStrata("HIGH")
-    background:SetFrameLevel(1)
-    background:SetBackdropColor(color_rb,color_gb,color_bb,alpha_fb)
-    background:SetBackdropBorderColor(0, 0, 0, 1)
-
-    if IsAddOnLoaded("!Beautycase") then
-        background:CreateBeautyBorder(11)
-        background:SetBeautyBorderColor(0.40, 0.40, 0.40)
-        background:SetBeautyBorderPadding(1)
-    end
-
-    background:SetPoint("TOPLEFT", -4, 4)
-    background:SetPoint("BOTTOMRIGHT", 4, -4)
-
-    -- Caption, close button
-    local caption = background:CreateFontString(background, "OVERLAY", nil)
-    caption:SetFont(unpack(ns.options.fonts.standard))
-
-    if ( caption ) then
-        local t = L.bagCaptions[self.name] or (tBankBags and strsub(self.name, 5))
-        if not t then t = self.name end
-        if self.Name == "cBneav_ItemSets" then t=ItemSetCaption..t end
-        caption:SetText(t)
-        caption:SetPoint("TOPLEFT", 7.5, -7.5)
-        self.Caption = caption
-
-        if ( tBag or tBank ) then
-            local close = CreateFrame("Button", nil, self, "UIPanelCloseButton")
-            if Aurora then
-                local F = Aurora[1]
-                F.ReskinClose(close, "TOPRIGHT", self, "TOPRIGHT", 1, 1)
-            else
-                close:SetPoint("TOPRIGHT", 8, 8)
-                close:SetDisabledTexture("Interface\\AddOns\\cargBags_Neav\\media\\CloseButton\\UI-Panel-MinimizeButton-Disabled")
-                close:SetNormalTexture("Interface\\AddOns\\cargBags_Neav\\media\\CloseButton\\UI-Panel-MinimizeButton-Up")
-                close:SetPushedTexture("Interface\\AddOns\\cargBags_Neav\\media\\CloseButton\\UI-Panel-MinimizeButton-Down")
-                close:SetHighlightTexture("Interface\\AddOns\\cargBags_Neav\\media\\CloseButton\\UI-Panel-MinimizeButton-Highlight", "ADD")
-            end
-            close:SetScript("OnClick", function(self) if cbNeav:AtBank() then CloseBankFrame() else CloseAllBags() end end)
-        end
-    end
-
-    -- mover buttons
-    if (settings.isCustomBag ) then
-        local moveLR = function(dir)
-            local idx = -1
-            for i,v in ipairs(cB_CustomBags) do if v.name == name then idx = i end end
-            if ( idx == -1 ) then return end
-
-            local tcol = (cB_CustomBags[idx].col + ((dir == "left") and 1 or -1)) % 2
-            cB_CustomBags[idx].col = tcol
-            cbNeav:CreateAnchors()
-        end
-
-        local moveUD = function(dir)
-            local idx = -1
-            for i,v in ipairs(cB_CustomBags) do if v.name == name then idx = i end end
-            if (idx == -1 ) then return end
-
-            local pos = idx
-            local d = (dir == "up") and 1 or -1
-            repeat
-                pos = pos + d
-            until
-                (not cB_CustomBags[pos]) or (cB_CustomBags[pos].col == cB_CustomBags[idx].col)
-
-            if (cB_CustomBags[pos] ~= nil ) then
-                local ele = cB_CustomBags[idx]
-                cB_CustomBags[idx] = cB_CustomBags[pos]
-                cB_CustomBags[pos] = ele
-                cbNeav:CreateAnchors()
-            end
-        end
-
-        local rightBtn = createMoverButton(self, Textures.Right, "Right")
-        rightBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, 0)
-        rightBtn:SetScript("OnClick", function() moveLR("right") end)
-
-        local leftBtn = createMoverButton(self, Textures.Left, "Left")
-        leftBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -17, 0)
-        leftBtn:SetScript("OnClick", function() moveLR("left") end)
-
-        local downBtn = createMoverButton(self, Textures.Down, "Down")
-        downBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -34, 0)
-        downBtn:SetScript("OnClick", function() moveUD("down") end)
-
-        local upBtn = createMoverButton(self, Textures.Up, "Up")
-        upBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -51, 0)
-        upBtn:SetScript("OnClick", function() moveUD("up") end)
-
-        self.rightBtn = rightBtn
-        self.leftBtn = leftBtn
-        self.downBtn = downBtn
-        self.upBtn = upBtn
-    end
-
-    local tBtnOffs = 0
-    if ( tBag or tBank ) then
-        -- Bag bar for changing bags
-        local bagType = tBag and "bags" or "bank"
-
-        local tS = tBag and "backpack+bags" or "bank"
-        local tI = tBag and 4 or 7
-
-        local bagButtons = self:SpawnPlugin("BagBar", tS)
-        bagButtons:SetSize(bagButtons:LayoutButtons("grid", tI))
-        bagButtons.highlightFunction = function(button, match) button:SetAlpha(match and 1 or 0.1) end
-        bagButtons.isGlobal = true
-
-        bagButtons:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -2, 25)
-        bagButtons:Hide()
-
-        -- main window gets a fake bag button for toggling key ring
-        self.BagBar = bagButtons
-
-        -- We don't need the bag bar every time, so let's create a toggle button for them to show
-        self.bagToggle = createIconButton("Bags", self, Textures.BagToggle, "BOTTOMRIGHT", "Toggle Bags", tBag)
-        self.bagToggle:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, 0)
-        self.bagToggle:SetScript("OnClick", function()
-            if ( self.BagBar:IsShown() ) then
-                self.BagBar:Hide()
-            --  if self.hint then self.hint:Show() end
-            --  self.hintShown = true
-            if self.money then self.money:Show() end
-            if self.currencies then self.currencies:Show() end
-            else
-                self.BagBar:Show()
-            --  if self.hint then self.hint:Hide() end
-            --  self.hintShown = false
-            if self.money then self.money:Hide() end
-            if self.currencies then self.currencies:Hide() end
-            end
-            self:UpdateDimensions()
-        end)
-
-        -- Button to reset new items:
-        if tBag and cBneavCfg.NewItems then
-            self.resetBtn = createIconButton("ResetNew", self, Textures.ResetNew, "BOTTOMRIGHT", "Reset New", tBag)
-            self.resetBtn:SetPoint("BOTTOMRIGHT", self.bagToggle, "BOTTOMLEFT", 0, 0)
-            self.resetBtn:SetScript("OnClick", function() resetNewItems(self) end)
-        end
-
-        -- Button to restack items:
-        if cBneavCfg.Restack then
-            self.restackBtn = createIconButton("Restack", self, Textures.Restack, "BOTTOMRIGHT", "Restack", tBag)
-            if self.resetBtn then
-                self.restackBtn:SetPoint("BOTTOMRIGHT", self.resetBtn, "BOTTOMLEFT", 0, 0)
-            else
-                self.restackBtn:SetPoint("BOTTOMRIGHT", self.bagToggle, "BOTTOMLEFT", 0, 0)
-            end
-            self.restackBtn:SetScript("OnClick", function() restackItems(self) end)
-        end
-
-        -- Button to show /cbneav options:
-        self.optionsBtn = createIconButton("Options", self, Textures.Config, "BOTTOMRIGHT", "Options", tBag)
-        if self.restackBtn then
-            self.optionsBtn:SetPoint("BOTTOMRIGHT", self.restackBtn, "BOTTOMLEFT", 0, 0)
-        elseif self.resetBtn then
-            self.optionsBtn:SetPoint("BOTTOMRIGHT", self.resetBtn, "BOTTOMLEFT", 0, 0)
-        else
-            self.optionsBtn:SetPoint("BOTTOMRIGHT", self.bagToggle, "BOTTOMLEFT", 0, 0)
-        end
-        self.optionsBtn:SetScript("OnClick", function()
-            SlashCmdList.CBNEAV("")
-            print("Usage: /cbneav |cffffff00command|r")
-        end)
-
-        -- Button to toggle Sell Junk:
-        if tBag then
-            local sjHint = cBneavCfg.SellJunk and "Sell Junk |cffd0d0d0(on)|r" or "Sell Junk |cffd0d0d0(off)|r"
-            self.junkBtn = createIconButton("SellJunk", self, Textures.SellJunk, "BOTTOMRIGHT", sjHint, tBag)
-            if self.optionsBtn then
-                self.junkBtn:SetPoint("BOTTOMRIGHT", self.optionsBtn, "BOTTOMLEFT", 0, 0)
-            elseif self.restackBtn then
-                self.junkBtn:SetPoint("BOTTOMRIGHT", self.restackBtn, "BOTTOMLEFT", 0, 0)
-            elseif self.resetBtn then
-                self.junkBtn:SetPoint("BOTTOMRIGHT", self.resetBtn, "BOTTOMLEFT", 0, 0)
-            else
-                self.junkBtn:SetPoint("BOTTOMRIGHT", self.bagToggle, "BOTTOMLEFT", 0, 0)
-            end
-            self.junkBtn:SetScript("OnClick", function()
-                cBneavCfg.SellJunk = not(cBneavCfg.SellJunk)
-                if cBneavCfg.SellJunk then
-                    self.junkBtn.tooltip:SetText("Sell Junk |cffd0d0d0(on)|r")
-                else
-                    self.junkBtn.tooltip:SetText("Sell Junk |cffd0d0d0(off)|r")
-                end
-            end)
-        end
-
-        -- Button to send reagents to Reagent Bank:
-        if tBank then
-            local rbHint = REAGENTBANK_DEPOSIT
-            self.reagentBtn = createIconButton("SendReagents", self, Textures.Deposit, "BOTTOMRIGHT", rbHint, tBag)
-            if self.optionsBtn then
-                self.reagentBtn:SetPoint("BOTTOMRIGHT", self.optionsBtn, "BOTTOMLEFT", 0, 0)
-            elseif self.restackBtn then
-                self.reagentBtn:SetPoint("BOTTOMRIGHT", self.restackBtn, "BOTTOMLEFT", 0, 0)
-            else
-                self.reagentBtn:SetPoint("BOTTOMRIGHT", self.bagToggle, "BOTTOMLEFT", 0, 0)
-            end
-            self.reagentBtn:SetScript("OnClick", function()
-                --print("Deposit!!!")
-                DepositReagentBank()
-            end)
-        end
-
-        -- Tooltip positions
-        local numButtons = 1
-        local btnTable = {self.bagToggle}
-        if self.optionsBtn then numButtons = numButtons + 1; tinsert(btnTable, self.optionsBtn) end
-        if self.restackBtn then numButtons = numButtons + 1; tinsert(btnTable, self.restackBtn) end
-        if tBag then
-            if self.resetBtn then numButtons = numButtons + 1; tinsert(btnTable, self.resetBtn) end
-            if self.junkBtn then numButtons = numButtons + 1; tinsert(btnTable, self.junkBtn) end
-        end
-        if tBank then
-            if self.reagentBtn then numButtons = numButtons + 1; tinsert(btnTable, self.reagentBtn) end
-        end
-        local ttPos = -(numButtons * 15 + 18)
-        if tBank then ttPos = ttPos + 3 end
-        for k,v in pairs(btnTable) do
-            v.tooltip:ClearAllPoints()
-            v.tooltip:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", ttPos, 5.5)
-            v.tooltipIcon:ClearAllPoints()
-            v.tooltipIcon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", ttPos + 5, 1.5)
-        end
-    end
-
-    -- Item drop target
-    if (tBag or tBank or tReagent ) then
-        self.DropTarget = CreateFrame("Button", self.name.."DropTarget", self, "ItemButtonTemplate")
-        local dtNT = _G[self.DropTarget:GetName().."NormalTexture"]
-        if dtNT then dtNT:SetTexture(nil) end
-
-        self.DropTarget.bg = CreateFrame("Frame", nil, self.DropTarget)
-        self.DropTarget.bg:SetAllPoints()
-        self.DropTarget.bg:SetBackdrop({
-            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            tile = false, tileSize = 16, edgeSize = 1,
-        })
-        self.DropTarget.bg:SetBackdropColor(1, 1, 1, 0.1)
-        self.DropTarget.bg:SetBackdropBorderColor(0, 0, 0, 1)
-        self.DropTarget:SetWidth(itemSlotSize - 1)
-        self.DropTarget:SetHeight(itemSlotSize - 1)
-
-        local DropTargetProcessItem = function()
-            -- if CursorHasItem() then  -- Commented out to fix Guild Bank -> Bags item dragging
-                local bID, sID = GetFirstFreeSlot((tBag and "bag") or (tBank and "bank") or "bankReagent")
-                if bID and not InCombatLockdown() then PickupContainerItem(bID, sID) end
-            -- end
-        end
-        self.DropTarget:SetScript("OnMouseUp", DropTargetProcessItem)
-        self.DropTarget:SetScript("OnReceiveDrag", DropTargetProcessItem)
-
-        local fs = self:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(unpack(ns.options.fonts.standard))
-
-        fs:SetJustifyH("LEFT")
-        fs:SetPoint("BOTTOMRIGHT", self.DropTarget, "BOTTOMRIGHT", 1.5, 1.5)
-        self.EmptySlotCounter = fs
-
-        if cBneavCfg.CompressEmpty then
-            self.DropTarget:Show()
-            self.EmptySlotCounter:Show()
-        else
-            self.DropTarget:Hide()
-            self.EmptySlotCounter:Hide()
-        end
-    end
-
-    if tBag then
-        local infoFrame = CreateFrame("Button", nil, self)
-        infoFrame:SetPoint("BOTTOMLEFT", 5, -6)
-        infoFrame:SetPoint("BOTTOMRIGHT", -86, -6)
-        infoFrame:SetHeight(32)
-
-        -- Search bar
-        local search = self:SpawnPlugin("SearchBar", infoFrame)
-        search.isGlobal = true
-        search.highlightFunction = function(button, match) button:SetAlpha(match and 1 or 0.1) end
-
-        local searchIcon = background:CreateTexture(nil, "ARTWORK")
-        searchIcon:SetTexture(Textures.Search)
-        searchIcon:SetVertexColor(0.8, 0.8, 0.8)
-        searchIcon:SetPoint("BOTTOMLEFT", infoFrame, "BOTTOMLEFT", -3, 8)
-        searchIcon:SetWidth(16)
-        searchIcon:SetHeight(16)
-
-        -- The money display
-        local money = self:SpawnPlugin("TagDisplay", "[money]", self)
-        money:SetPoint("TOPRIGHT", self, -30, -2.5)
-        money:SetFont(unpack(ns.options.fonts.standard))
-        money:SetJustifyH("RIGHT")
-        money:SetShadowColor(0, 0, 0, 0)
-        self.money = money
-
-        -- Currency display
-        local currencies = self:SpawnPlugin("TagDisplay", "[currencies]", self)
-        currencies:SetPoint("BOTTOMLEFT", infoFrame, -0.5, 31.5)
-        currencies:SetFont(unpack(ns.options.fonts.standard))
-        currencies:SetJustifyH("LEFT")
-        currencies:SetShadowColor(0, 0, 0, 0)
-        currencies:SetWordWrap(true)
-        self.currencies = currencies
-    end
-
-    self:SetScale(cBneavCfg.scale)
-    return self
 end
 
 ------------------------------------------
@@ -832,13 +764,12 @@ local MyButton = cbNeav:GetItemButtonClass()
 MyButton:Scaffold("Default")
 
 function MyButton:OnAdd()
-    self:SetScript('OnMouseUp', function(self, mouseButton)
-        if (mouseButton == 'RightButton') and (IsAltKeyDown()) and (IsControlKeyDown() ) then
-            local tID = GetContainerItemID(self.bagID, self.slotID)
-            if tID then
-                cbNeavCatDropDown.itemName = GetItemInfo(tID)
-                cbNeavCatDropDown.itemID = tID
-                --ToggleDropDownMenu(1, nil, cbNeavCatDropDown, self, 0, 0)
+    self:SetScript("OnMouseUp", function(self, mouseButton)
+        if ( mouseButton == "RightButton" and IsAltKeyDown() and IsControlKeyDown() ) then
+            local item = GetContainerItemID(self.bagID, self.slotID)
+            if ( item ) then
+                cbNeavCatDropDown.itemName = GetItemInfo(item)
+                cbNeavCatDropDown.itemID = item
                 cbNeavCatDropDown:Toggle(self, nil, nil, 0, 0)
             end
         end
@@ -850,4 +781,6 @@ end
 ------------------------------------------
 local BagButton = cbNeav:GetClass("BagButton", true, "BagButton")
 
-function BagButton:OnCreate() self:GetCheckedTexture():SetVertexColor(1, 0.8, 0, 0.8) end
+function BagButton:OnCreate()
+    self:GetCheckedTexture():SetVertexColor(1, 0.8, 0, 0.8)
+end

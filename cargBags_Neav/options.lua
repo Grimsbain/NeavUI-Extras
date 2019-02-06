@@ -3,25 +3,11 @@ local cargBags = ns.cargBags
 
 local floor = math.floor
 
-local function SetFrameMovable(frame, moveable)
-    frame:SetMovable(true)
-    frame:SetUserPlaced(true)
-    frame:RegisterForClicks("LeftButton", "RightButton")
-
-    frame:SetScript("OnDragStart", function(self)
-        if ( IsShiftKeyDown() and IsAltKeyDown() and moveable ) then
-            frame:StartMoving()
-        end
-    end)
-
-    frame:SetScript("OnDragStop", function(self)
-        frame:StopMovingOrSizing()
-    end)
-end
-
-local function LockInCombat(frame)
-    frame:SetScript("OnUpdate", function(self)
-        if ( not InCombatLockdown() ) then
+local function DisableInCombat(self)
+    self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self:RegisterEvent("PLAYER_REGEN_DISABLED")
+    self:SetScript("OnEvent", function(self, event, ...)
+        if ( event == "PLAYER_REGEN_ENABLED" ) then
             self:Enable()
         else
             self:Disable()
@@ -39,7 +25,7 @@ local function CreateCheckBox(name, parent, label, tooltip, relativeTo, x, y, di
     end
 
     if ( disableInCombat ) then
-        LockInCombat(checkBox)
+        DisableInCombat(checkBox)
     end
 
     return checkBox
@@ -123,8 +109,6 @@ Options:SetScript("OnShow", function()
         local checked = self:GetChecked()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         cBneavCfg.Unlocked = not cBneavCfg.Unlocked
-        SetFrameMovable(cB_Bags.main, cBneavCfg.Unlocked)
-        SetFrameMovable(cB_Bags.bank, cBneavCfg.Unlocked)
     end)
 
     local AddonTitle = Options:CreateFontString("$parentTitle", "ARTWORK", "GameFontNormalLarge")

@@ -1,5 +1,5 @@
 ﻿cBneavL = {}
-local gl = GetLocale()
+local locale = GetLocale()
 
 cBneavL.Search = SEARCH
 cBneavL.Armor = GetItemClassInfo(4)
@@ -38,44 +38,52 @@ cBneavL.bagCaptions = {
     ["cBneav_Fishing"]              = PROFESSIONS_FISHING,
 }
 
-if gl == "deDE" then
+if locale == "deDE" then
     cBneavL.MarkAsNew = "Als neu markieren"
     cBneavL.MarkAsKnown = "Als bekannt markieren"
     cBneavL.bagCaptions.cBneav_Stuff = "Cooles Zeugs"
     cBneavL.bagCaptions.cBneav_NewItems = "Neue Items"
-elseif gl == "ruRU" then
+    cBneavL.VendorTrash = "Vendor trash sold:"
+elseif locale == "ruRU" then
     cBneavL.MarkAsNew = "Перенести в Новые предметы"
     cBneavL.MarkAsKnown = "Перенести в Известные предметы"
     cBneavL.bagCaptions.cBneav_Stuff = "Разное"
     cBneavL.bagCaptions.cBneav_NewItems = "Новые предметы"
-elseif gl == "zhTW" then
+    cBneavL.VendorTrash = "Vendor trash sold:"
+elseif locale == "zhTW" then
     cBneavL.MarkAsNew = "Mark as New"
     cBneavL.MarkAsKnown = "Mark as Known"
     cBneavL.bagCaptions.cBneav_Stuff = "施法材料"
     cBneavL.bagCaptions.cBneav_NewItems = "新增"
-elseif gl == "zhCN" then
+    cBneavL.VendorTrash = "Vendor trash sold:"
+elseif locale == "zhCN" then
     cBneavL.MarkAsNew = "Mark as New"
     cBneavL.MarkAsKnown = "Mark as Known"
     cBneavL.bagCaptions.cBneav_Stuff = "施法材料"
     cBneavL.bagCaptions.cBneav_NewItems = "新增"
-elseif gl == "koKR" then
+    cBneavL.VendorTrash = "Vendor trash sold:"
+elseif locale == "koKR" then
     cBneavL.MarkAsNew = "Mark as New"
     cBneavL.MarkAsKnown = "Mark as Known"
     cBneavL.bagCaptions.cBneav_Stuff = "지정"
     cBneavL.bagCaptions.cBneav_NewItems = "신규"
-elseif gl == "frFR" then
+    cBneavL.VendorTrash = "Vendor trash sold:"
+elseif locale == "frFR" then
     cBneavL.MarkAsNew = "Marquer comme Neuf"
     cBneavL.MarkAsKnown = "Marquer comme Connu"
     cBneavL.bagCaptions.cBneav_Stuff = "Divers"
     cBneavL.bagCaptions.cBneav_NewItems = "Nouveaux Objets"
-elseif gl == "itIT" then
+    cBneavL.VendorTrash = "Vendor trash sold:"
+elseif locale == "itIT" then
     cBneavL.MarkAsNew = "Segna come Nuovo"
     cBneavL.MarkAsKnown = "Segna come Conosciuto"
     cBneavL.bagCaptions.cBneav_Stuff = "Cose Interessanti"
     cBneavL.bagCaptions.cBneav_NewItems = "Oggetti Nuovi"
+    cBneavL.VendorTrash = "Vendor trash sold:"
 else
     cBneavL.MarkAsNew = "Mark as New"
     cBneavL.MarkAsKnown = "Mark as Known"
     cBneavL.bagCaptions.cBneav_Stuff = "Cool Stuff"
     cBneavL.bagCaptions.cBneav_NewItems = "New Items"
+    cBneavL.VendorTrash = "Vendor trash sold:"
 end

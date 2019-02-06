@@ -1,6 +1,6 @@
-## Interface: 80000
+## Interface: 80100
 ## Title: cargBags_Neav
-## Version: 1.0
+## Version: 1.1
 ## Author: Grimsbain (Forked from cargBags_Nivaya by Luzzifus (Modified by Nibelheim, humfras))
 ## SavedVariables: cBneavCfg, cB_CustomBags, cBneav_CatInfo
 ## SavedVariablesPerCharacter: cB_KnownItems, cBneav

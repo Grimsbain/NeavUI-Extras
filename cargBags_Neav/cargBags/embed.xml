@@ -29,7 +29,6 @@
         They provide different approaches of sorting items into the right container
         You need to choose one
     -->
-    <!-- <Script file='base-add\bags.sieve.lua' /> -->
     <Script file='base-add\filters.sieve.lua' />
 
     <!--
@@ -40,7 +39,6 @@
     <Script file='mixins\api-common.lua' />
     <Script file='mixins\locale.lua' />
     <Script file='mixins\parseBags.lua' />
-    <Script file='mixins\textFilter.lua' />
 
     <!--
          Default additions for api-common
@@ -54,7 +52,6 @@
     -->
     <Script file='mixins-add\itemkeys\basic.lua' />
     <Script file='mixins-add\itemkeys\equipSets.lua' />
-    <Script file='mixins-add\itemkeys\tooltip.lua' />
 
     <!--
         Plugins for your containers

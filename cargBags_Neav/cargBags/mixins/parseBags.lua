@@ -52,20 +52,27 @@ cargBags.BagStrings = bagStrings
     @return bags <table>
 ]]
 function cargBags:ParseBags(bags)
-    --print("ParseBags", bags)
-    if(type(bags) == "table") then return bags end
-    if(bagStrings[bags]) then return bagStrings[bags] end
+
+    if ( type(bags) == "table" ) then
+        return bags
+    end
+
+    if ( bagStrings[bags] ) then
+        return bagStrings[bags]
+    end
+
     local min, max = bags and bags:match("(%d+)-(%d+)")
-    if(min) then
-        local t = {}
+
+    if ( min ) then
+        local parsed = {}
         for i=min, max do
-            t[#t+1] = i
+            parsed[#parsed+1] = i
         end
-        bagStrings[bags] = t
-        return t
-    elseif(tonumber(bags)) then
-        local t = {tonumber(bags)}
-        bagStrings[bags] = t
-        return t
+        bagStrings[bags] = parsed
+        return parsed
+    elseif ( tonumber(bags) ) then
+        local parsed = {tonumber(bags)}
+        bagStrings[bags] = parsed
+        return parsed
     end
 end

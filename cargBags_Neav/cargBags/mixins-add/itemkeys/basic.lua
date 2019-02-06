@@ -25,23 +25,26 @@ local parent, ns = ...
 local cargBags = ns.cargBags
 
 -- Returns the numeric item id (12345)
-cargBags.itemKeys["id"] = function(i)
-    return i.link and tonumber(i.link:match("item:(%d+)"))
+cargBags.itemKeys["id"] = function(item)
+    return item.link and tonumber(item.link:match("item:(%d+)"))
 end
 
 --  Returns the type of the parent bag
-cargBags.itemKeys["bagType"] = function(i)
-    return select(2, GetContainerNumFreeSlots(i.bagID))
+cargBags.itemKeys["bagType"] = function(item)
+    return select(2, GetContainerNumFreeSlots(item.bagID))
 end
 
 -- Returns the item string (12345:0:0:0)
-cargBags.itemKeys["string"] = function(i)
-    return i.link and i.link:match("item:(%d+:%d+:%d+:%d+)")
+cargBags.itemKeys["string"] = function(item)
+    return item.link and item.link:match("item:(%d+:%d+:%d+:%d+)")
 end
 
-cargBags.itemKeys["stats"] = function(i)
-    if(not i.link or not GetItemStats) then return end
-    local stats = GetItemStats(i.link)
-    i.stats = stats
+cargBags.itemKeys["stats"] = function(item)
+    if ( not item.link or not GetItemStats ) then
+        return
+    end
+
+    local stats = GetItemStats(item.link)
+    item.stats = stats
     return stats
 end
